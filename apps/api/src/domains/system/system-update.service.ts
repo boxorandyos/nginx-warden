@@ -23,11 +23,36 @@ export function resolveProjectRoot(): string {
   return path.resolve(process.cwd(), '..', '..');
 }
 
+/** Env keys forwarded into the transient unit (git/update need PATH; config from API .env). */
+const SYSTEMD_RUN_ENV_KEYS = [
+  'PATH',
+  'HOME',
+  'LANG',
+  'UPDATE_GIT_REMOTE',
+  'UPDATE_GIT_BRANCH',
+  'UPDATE_GIT_NO_STASH',
+  'NGINX_WARDEN_ROOT',
+  'NGINX_WARDEN_HOME',
+  'NGINX_WARDEN_UI_UPDATE_LOG',
+] as const;
+
+function systemdRunEnvArgs(env: Record<string, string | undefined>): string[] {
+  const args: string[] = [];
+  for (const k of SYSTEMD_RUN_ENV_KEYS) {
+    const v = env[k];
+    if (v !== undefined && v !== '') {
+      args.push('-E', `${k}=${v}`);
+    }
+  }
+  return args;
+}
+
 /**
- * Schedule git pull + scripts/update.sh in a detached process.
+ * Schedule git pull + scripts/update.sh in a separate transient systemd unit.
  *
- * The UI must not run update.sh synchronously: update.sh calls `systemctl stop nginx-warden-backend`,
- * which would stop the same Node process that is waiting on the shell child — deadlock and stop timeout.
+ * A normal detached child still shares the backend service cgroup; `systemctl stop nginx-warden-backend`
+ * in update.sh then waits until that cgroup is empty, but the shell running update.sh is still in it → hang.
+ * `systemd-run` starts the script in its own cgroup so the stop can complete.
  */
 export async function runGithubUpdateAndInstallScript(): Promise<SystemUpdateResult> {
   const disabled = process.env.ENABLE_WEB_SYSTEM_UPDATE === 'false' || process.env.ENABLE_WEB_SYSTEM_UPDATE === '0';
@@ -57,15 +82,28 @@ export async function runGithubUpdateAndInstallScript(): Promise<SystemUpdateRes
     throw new Error('Invalid UPDATE_GIT_BRANCH or UPDATE_GIT_REMOTE');
   }
 
-  const child = spawn('bash', [wrapperScript], {
-    detached: true,
-    stdio: 'ignore',
-    cwd: root,
-    env: process.env,
-  });
+  const wrapperAbs = path.resolve(wrapperScript);
+  const unitName = `nginx-warden-apply-update-${Date.now()}`;
+  const child = spawn(
+    'systemd-run',
+    [
+      `--unit=${unitName}`,
+      '--collect',
+      '--no-block',
+      `-pWorkingDirectory=${root}`,
+      ...systemdRunEnvArgs(process.env),
+      'bash',
+      wrapperAbs,
+    ],
+    {
+      detached: true,
+      stdio: 'ignore',
+      env: process.env,
+    }
+  );
 
   child.on('error', (err: Error) => {
-    logger.error('Failed to spawn apply-update-from-remote.sh', err);
+    logger.error('Failed to start systemd-run for apply-update-from-remote.sh', err);
   });
 
   child.unref();
@@ -75,13 +113,13 @@ export async function runGithubUpdateAndInstallScript(): Promise<SystemUpdateRes
   }
 
   const output = [
-    'Update scheduled in the background (detached from the API process).',
+    'Update scheduled as a transient systemd unit (separate cgroup from the API).',
     `Progress is written to: ${NGINX_WARDEN_UI_UPDATE_LOG}`,
     'On the server: sudo tail -f ' + NGINX_WARDEN_UI_UPDATE_LOG,
     'Services will stop and restart during the run; refresh the portal after a few minutes.',
   ].join('\n');
 
-  logger.info('System update scheduled in background', { pid: child.pid, root });
+  logger.info('System update scheduled via systemd-run', { pid: child.pid, unitName, root });
 
   return {
     output,
