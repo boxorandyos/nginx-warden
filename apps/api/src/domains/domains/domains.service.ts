@@ -3,6 +3,7 @@ import prisma from '../../config/database';
 import { domainsRepository } from './domains.repository';
 import { nginxConfigService } from './services/nginx-config.service';
 import { nginxReloadService } from './services/nginx-reload.service';
+import { upstreamHealthService } from './services/upstream-health.service';
 import { sslService } from '../ssl/ssl.service';
 import {
   DomainWithRelations,
@@ -153,6 +154,8 @@ export class DomainsService {
         }
       }
 
+      this.maybeProbeUpstreamHealth(finalDomain);
+
       return finalDomain;
     } catch (error: any) {
       // Rollback: delete domain from database
@@ -191,6 +194,8 @@ export class DomainsService {
     await nginxReloadService.autoReload(true);
 
     logger.info(`Regenerated nginx config for domain ${domain.name}`);
+
+    this.maybeProbeUpstreamHealth(domain);
   }
 
   /**
@@ -231,6 +236,24 @@ export class DomainsService {
         healthCheckTimeout: originalDomain.loadBalancer.healthCheckTimeout,
         healthCheckPath: originalDomain.loadBalancer.healthCheckPath,
       } : undefined,
+      realIpConfig: {
+        realIpEnabled: originalDomain.realIpEnabled,
+        realIpCloudflare: originalDomain.realIpCloudflare,
+        realIpCustomCidrs: originalDomain.realIpCustomCidrs,
+      },
+      advancedConfig: {
+        hstsEnabled: originalDomain.hstsEnabled,
+        http2Enabled: originalDomain.http2Enabled,
+        grpcEnabled: originalDomain.grpcEnabled,
+        clientMaxBodySize: originalDomain.clientMaxBodySize ?? undefined,
+        customLocations: (originalDomain.customLocations as any) ?? undefined,
+        limitReqPerMinute: originalDomain.limitReqPerMinute,
+        limitReqBurst: originalDomain.limitReqBurst,
+        limitConnPerAddr: originalDomain.limitConnPerAddr,
+        modsecEngineMode: originalDomain.modsecEngineMode,
+        crowdsecNginxEnabled: originalDomain.crowdsecNginxEnabled,
+        crowdsecAppsecEnabled: originalDomain.crowdsecAppsecEnabled,
+      },
     };
 
     try {
@@ -269,6 +292,8 @@ export class DomainsService {
       );
 
       logger.info(`Domain ${updatedDomain.name} updated by user ${username}`);
+
+      this.maybeProbeUpstreamHealth(updatedDomain);
 
       return updatedDomain;
     } catch (error: any) {
@@ -421,6 +446,19 @@ export class DomainsService {
     }
 
     return result;
+  }
+
+  /**
+   * Optional non-blocking upstream HTTP(S) probes after config changes.
+   * Set UPSTREAM_HEALTH_ON_SAVE=true on the API to enable.
+   */
+  private maybeProbeUpstreamHealth(domain: DomainWithRelations): void {
+    if (process.env.UPSTREAM_HEALTH_ON_SAVE !== 'true') {
+      return;
+    }
+    void upstreamHealthService.checkUpstreamsHealth(domain).catch((err) => {
+      logger.warn(`Upstream health probe skipped or failed for ${domain.name}`, err);
+    });
   }
 
   /**

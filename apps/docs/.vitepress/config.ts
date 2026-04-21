@@ -42,7 +42,8 @@ export default defineConfig({
           { text: 'SSL Management', link: '/guide/ssl' },
           { text: 'ModSecurity', link: '/guide/modsecurity' },
           { text: 'Performance', link: '/guide/performance' },
-          { text: 'Log Analysis', link: '/guide/logs' }
+          { text: 'Log Analysis', link: '/guide/logs' },
+          { text: 'Firewall & CrowdSec (spec)', link: '/guide/firewall-crowdsec-nftables' }
         ]
       },
       {
@@ -87,7 +88,8 @@ export default defineConfig({
             { text: 'SSL Management', link: '/guide/ssl' },
             { text: 'ModSecurity', link: '/guide/modsecurity' },
             { text: 'Performance Monitoring', link: '/guide/performance' },
-            { text: 'Log Analysis', link: '/guide/logs' }
+            { text: 'Log Analysis', link: '/guide/logs' },
+            { text: 'Firewall & CrowdSec (spec)', link: '/guide/firewall-crowdsec-nftables' }
           ]
         }
       ],

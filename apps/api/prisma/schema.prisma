@@ -173,6 +173,12 @@ enum SSLStatus {
   expired
 }
 
+/// Per-vhost ModSecurity engine mode (LibModSecurity SecRuleEngine)
+enum ModsecEngineMode {
+  On
+  DetectionOnly
+}
+
 model Domain {
   id            String       @id @default(cuid())
   name          String       @unique
@@ -192,6 +198,18 @@ model Domain {
   grpcEnabled        Boolean @default(false) // Enable gRPC/gRPCs support
   clientMaxBodySize  Int?    @default(100)   // Maximum request body size in MB (client_max_body_size)
   customLocations    Json?                   // Custom location blocks configuration
+
+  // L7 shaping (nginx limit_req / limit_conn); 0 = disabled
+  limitReqPerMinute Int @default(0)
+  limitReqBurst     Int @default(20)
+  limitConnPerAddr  Int @default(0)
+
+  modsecEngineMode ModsecEngineMode @default(On)
+
+  /// CrowdSec nginx bouncer (Lua). Only emitted when ENABLE_CROWDSEC_NGINX_LUA=true on API.
+  crowdsecNginxEnabled Boolean @default(false)
+  /// Include optional AppSec snippet path from CROWDSEC_APPSEC_INCLUDE when set.
+  crowdsecAppsecEnabled Boolean @default(false)
 
   // Relations
   upstreams      Upstream[]
@@ -827,4 +845,62 @@ model NLBHealthCheck {
   @@index([nlbId, checkedAt])
   @@index([upstreamHost, upstreamPort])
   @@map("nlb_health_checks")
+}
+
+// --- Host firewall (nftables) — Phase 1: policy + sets; CrowdSec fills ban sets out-of-band ---
+
+enum FirewallSetKind {
+  trusted_ipv4
+  trusted_ipv6
+  local_deny_ipv4
+  local_deny_ipv6
+}
+
+model FirewallSettings {
+  id String @id @default("default")
+
+  /// When true, the managed nftables table is applied; when false, apply removes the table (if present).
+  enabled Boolean @default(false)
+
+  sshPort  Int @default(22)
+  apiPort  Int @default(3001)
+  uiPort   Int @default(8080)
+  /// Public TCP ports open to the world (after CrowdSec/local deny checks), e.g. 80, 443
+  publicTcpPorts Int[] @default([80, 443])
+
+  /// Names must match CrowdSec firewall bouncer config when that integration is enabled
+  crowdsecNftSetV4 String @default("crowdsec_blacklists")
+  crowdsecNftSetV6 String @default("crowdsec6_blacklists")
+
+  updatedAt DateTime @updatedAt
+
+  @@map("firewall_settings")
+}
+
+model FirewallAddressEntry {
+  id    String           @id @default(cuid())
+  kind  FirewallSetKind
+  cidr  String
+  label String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([kind])
+  @@map("firewall_address_entries")
+}
+
+model FirewallApplyLog {
+  id String @id @default(cuid())
+
+  success      Boolean
+  checksum     String?
+  errorMessage String? @db.Text
+  /// First ~8k of generated ruleset for audit
+  rulesetSnippet String? @db.Text
+
+  appliedAt DateTime @default(now())
+
+  @@index([appliedAt])
+  @@map("firewall_apply_logs")
 }

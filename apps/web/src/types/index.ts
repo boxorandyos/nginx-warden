@@ -21,6 +21,15 @@ export interface Domain {
   http2Enabled?: boolean;
   grpcEnabled?: boolean;
   customLocations?: CustomLocation[];
+  clientMaxBodySize?: number;
+  /** L7: requests per minute per IP; 0 = off */
+  limitReqPerMinute?: number;
+  limitReqBurst?: number;
+  /** L7: concurrent connections per IP; 0 = off */
+  limitConnPerAddr?: number;
+  modsecEngineMode?: 'On' | 'DetectionOnly';
+  crowdsecNginxEnabled?: boolean;
+  crowdsecAppsecEnabled?: boolean;
 }
 
 export interface CustomLocation {

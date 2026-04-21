@@ -22,12 +22,20 @@ BACKEND_DIR="$PROJECT_DIR/apps/api"
 FRONTEND_DIR="$PROJECT_DIR/apps/web"
 LOG_FILE="/var/log/nginx-warden-ui-deploy.log"
 
+# --- Port layout (override when invoking: WARDEN_UI_PORT=9080 WARDEN_API_PORT=3101 ./deploy.sh) ---
+# WARDEN_UI_PORT default 8088 avoids clashing with common dev ports.
+# WARDEN_DB_HOST_PORT default 15432 avoids conflict with a host PostgreSQL on 5432.
+# CrowdSec LAPI (if installed) uses CROWDSEC_LAPI_PORT default 9091 — not 8080 or the Warden UI port.
+export WARDEN_API_PORT="${WARDEN_API_PORT:-3001}"
+export WARDEN_UI_PORT="${WARDEN_UI_PORT:-8088}"
+export WARDEN_DB_HOST_PORT="${WARDEN_DB_HOST_PORT:-15432}"
+export CROWDSEC_LAPI_PORT="${CROWDSEC_LAPI_PORT:-9091}"
+
 # Database configuration
 DB_CONTAINER_NAME="nginx-warden-postgres"
 DB_NAME="nginx_warden_db"
 DB_USER="nginx_warden_user"
 DB_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
-DB_PORT=5432
 JWT_ACCESS_SECRET=$(openssl rand -base64 64 | tr -d "=+/" | cut -c1-64)
 JWT_REFRESH_SECRET=$(openssl rand -base64 64 | tr -d "=+/" | cut -c1-64)
 SESSION_SECRET=$(openssl rand -base64 64 | tr -d "=+/" | cut -c1-64)
@@ -59,6 +67,21 @@ log "=================================="
 log "Nginx Warden Deployment Started"
 log "=================================="
 
+# Persist ports for update.sh and operators (never stores secrets)
+mkdir -p /etc/nginx-warden
+cat > /etc/nginx-warden/ports.env <<EOF
+# Written by deploy.sh — sourced by scripts/update.sh for health checks.
+WARDEN_API_PORT=${WARDEN_API_PORT}
+WARDEN_UI_PORT=${WARDEN_UI_PORT}
+WARDEN_DB_HOST_PORT=${WARDEN_DB_HOST_PORT}
+# CrowdSec Local API (install-crowdsec.sh); override: CROWDSEC_LAPI_PORT=9081 ./scripts/deploy.sh
+CROWDSEC_LAPI_PORT=${CROWDSEC_LAPI_PORT}
+EOF
+chmod 644 /etc/nginx-warden/ports.env
+log "Port file: /etc/nginx-warden/ports.env (API=${WARDEN_API_PORT} UI=${WARDEN_UI_PORT} DB host=${WARDEN_DB_HOST_PORT} CrowdSec LAPI=${CROWDSEC_LAPI_PORT})"
+
+chmod +x "${PROJECT_DIR}/scripts/"*.sh 2>/dev/null || true
+
 # Get server public IP
 PUBLIC_IP=$(curl -s ifconfig.me || curl -s icanhazip.com || curl -s ipinfo.io/ip || echo "localhost")
 log "Detected Public IP: $PUBLIC_IP"
@@ -84,7 +107,7 @@ else
     fi
 fi
 
-if ! comannd -v htpasswd &> /dev/null; then
+if ! command -v htpasswd &> /dev/null; then
     warn "htpasswd not found. Installing apache2-utils..."
     apt-get install -y apache2-utils >> "$LOG_FILE" 2>&1 || error "Failed to install apache2-utils"
     log "✓ htpasswd installed successfully"
@@ -195,7 +218,7 @@ docker run -d \
     -e POSTGRES_DB="${DB_NAME}" \
     -e POSTGRES_USER="${DB_USER}" \
     -e POSTGRES_PASSWORD="${DB_PASSWORD}" \
-    -p 127.0.0.1:"${DB_PORT}":5432 \
+    -p 127.0.0.1:"${WARDEN_DB_HOST_PORT}":5432 \
     -v nginx-warden-postgres-data:/var/lib/postgresql/data \
     --restart unless-stopped \
     postgres:15-alpine >> "${LOG_FILE}" 2>&1 || error "Failed to start PostgreSQL container"
@@ -217,7 +240,7 @@ done
 log "✓ PostgreSQL container started successfully"
 log "  • Database: ${DB_NAME}"
 log "  • User: ${DB_USER}"
-log "  • Port: ${DB_PORT}"
+log "  • Host port (localhost): ${WARDEN_DB_HOST_PORT} → container 5432"
 
 # Step 3: Install Nginx + ModSecurity
 log "Step 3/8: Installing Nginx + ModSecurity..."
@@ -248,10 +271,14 @@ cd "${BACKEND_DIR}"
 log "Creating fresh backend .env from .env.example..."
 cat > ".env" <<EOF
 # Database Configuration
-DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@localhost:${DB_PORT}/${DB_NAME}?schema=public"
+DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@localhost:${WARDEN_DB_HOST_PORT}/${DB_NAME}?schema=public"
+
+# Monorepo root (systemd WorkingDirectory is apps/api — set for git/update + paths)
+NGINX_WARDEN_ROOT="${PROJECT_DIR}"
 
 # Server Configuration
-PORT=3001
+PORT=${WARDEN_API_PORT}
+HOST=0.0.0.0
 NODE_ENV="production"
 
 # JWT Configuration
@@ -261,7 +288,7 @@ JWT_ACCESS_EXPIRES_IN=60m
 JWT_REFRESH_EXPIRES_IN=7d
 
 # CORS Configuration (comma-separated origins)
-CORS_ORIGIN="http://${PUBLIC_IP}:8080,http://localhost:8080,http://localhost:5173,http://${PUBLIC_IP},http://localhost"
+CORS_ORIGIN="http://${PUBLIC_IP}:${WARDEN_UI_PORT},http://localhost:${WARDEN_UI_PORT},http://localhost:5173,http://${PUBLIC_IP},http://localhost"
 
 # Security
 BCRYPT_ROUNDS=10
@@ -276,6 +303,10 @@ TWO_FACTOR_APP_NAME="Nginx Warden"
 SSL_DIR="/etc/nginx/ssl"
 ACME_DIR="/var/www/html/.well-known/acme-challenge"
 
+# CrowdSec LAPI (scripts/install-crowdsec.sh binds 127.0.0.1:${CROWDSEC_LAPI_PORT} by default)
+# CROWDSEC_LAPI_URL=http://127.0.0.1:${CROWDSEC_LAPI_PORT}
+# CROWDSEC_API_KEY=
+
 # SMTP Configuration
 SMTP_HOST="smtp.example.com"
 SMTP_PORT=587
@@ -286,8 +317,9 @@ EOF
 log "✅ Created fresh backend .env"
 
 log "✓ Backend .env configured with:"
-log "  • Database: PostgreSQL (Docker)"
-log "  • CORS Origins: ${PUBLIC_IP}, localhost"
+log "  • Database: PostgreSQL (Docker) localhost:${WARDEN_DB_HOST_PORT}"
+log "  • API PORT=${WARDEN_API_PORT} UI PORT=${WARDEN_UI_PORT}"
+log "  • CORS: UI on ${WARDEN_UI_PORT}; CrowdSec LAPI install uses port ${CROWDSEC_LAPI_PORT} (see install-crowdsec.sh)"
 log "  • JWT Secrets: Generated (64 chars each)"
 
 # Generate Prisma Client
@@ -320,13 +352,13 @@ cd "${FRONTEND_DIR}"
 # Create frontend .env from .env.example (always create fresh)
 log "Creating fresh frontend .env from .env.example..."
 cat > ".env" <<EOF
-# auto = same hostname as the browser + port 3001 (works for private IP, DNS, public IP)
+# auto = same hostname as the browser; API port is in backend .env (PORT)
 VITE_API_URL=auto
 EOF
 
 log "✅ Created fresh frontend .env"
 
-log "✓ Frontend .env: VITE_API_URL=auto (API calls use same host as UI on port 3001)"
+log "✓ Frontend .env: VITE_API_URL=auto (browser uses same hostname; API on port ${WARDEN_API_PORT})"
 
 # Clean previous build
 if [ -d "dist" ]; then
@@ -341,11 +373,11 @@ pnpm --filter @nginx-warden/web build >> "${LOG_FILE}" 2>&1 || error "Failed to 
 
 # Update CSP in built index.html to use public IP
 log "Updating Content Security Policy with public IP..."
-sed -i "s|__API_URL__|http://${PUBLIC_IP}:3001 http://localhost:3001|g" "${FRONTEND_DIR}/dist/index.html"
+sed -i "s|__API_URL__|http://${PUBLIC_IP}:${WARDEN_API_PORT} http://localhost:${WARDEN_API_PORT}|g" "${FRONTEND_DIR}/dist/index.html"
 sed -i "s|__WS_URL__|ws://${PUBLIC_IP}:* ws://localhost:*|g" "${FRONTEND_DIR}/dist/index.html"
 
 log "✓ Frontend built successfully"
-log "✓ CSP configured for: http://${PUBLIC_IP}:3001, http://localhost:3001"
+log "✓ CSP configured for API port ${WARDEN_API_PORT}"
 
 # Step 7: Setup Nginx Configuration
 log "Step 7/8: Configuring Nginx..."
@@ -410,7 +442,7 @@ Type=simple
 User=root
 WorkingDirectory=${FRONTEND_DIR}
 Environment=NODE_ENV=production
-ExecStart=$(which pnpm) preview --host 0.0.0.0 --port 8080
+ExecStart=$(which pnpm) preview --host 0.0.0.0 --port ${WARDEN_UI_PORT}
 Restart=always
 RestartSec=10
 StandardOutput=append:/var/log/nginx-warden-frontend.log
@@ -515,13 +547,13 @@ log "=================================="
 log ""
 log "📋 Service Status:"
 log "  • PostgreSQL: Docker container '${DB_CONTAINER_NAME}'"
-log "  • Backend API: http://${PUBLIC_IP}:3001"
-log "  • Frontend UI: http://${PUBLIC_IP}:8080"
+log "  • Backend API: http://${PUBLIC_IP}:${WARDEN_API_PORT}"
+log "  • Frontend UI: http://${PUBLIC_IP}:${WARDEN_UI_PORT}"
 log "  • Nginx: Port 80/443"
 log ""
 log "🔐 Database Credentials:"
 log "  • Host: localhost"
-log "  • Port: ${DB_PORT}"
+log "  • Port (host): ${WARDEN_DB_HOST_PORT}"
 log "  • Database: ${DB_NAME}"
 log "  • Username: ${DB_USER}"
 log "  • Password: ${DB_PASSWORD}"
@@ -547,7 +579,7 @@ log "🔐 Default Credentials:"
 log "  Username: admin"
 log "  Password: admin123"
 log ""
-log "🌐 Access the portal at: http://${PUBLIC_IP}:8080"
+log "🌐 Access the portal at: http://${PUBLIC_IP}:${WARDEN_UI_PORT}"
 log ""
 
 # Save credentials to file
@@ -556,13 +588,13 @@ cat > /root/.nginx-warden-credentials <<EOF
 # Generated: $(date)
 
 ## Public Access
-Frontend: http://${PUBLIC_IP}:8080
-Backend:  http://${PUBLIC_IP}:3001
+Frontend: http://${PUBLIC_IP}:${WARDEN_UI_PORT}
+Backend:  http://${PUBLIC_IP}:${WARDEN_API_PORT}
 
 ## Database (Docker)
 Container: ${DB_CONTAINER_NAME}
 Host: localhost
-Port: ${DB_PORT}
+Port (host): ${WARDEN_DB_HOST_PORT}
 Database: ${DB_NAME}
 Username: ${DB_USER}
 Password: ${DB_PASSWORD}
@@ -586,15 +618,31 @@ EOF
 chmod 600 /root/.nginx-warden-credentials
 log "💾 Credentials saved to: /root/.nginx-warden-credentials"
 
+# CrowdSec Security Engine + nftables firewall bouncer + LAPI keys in apps/api/.env (fully automated)
+# Skip with: WARDEN_SKIP_CROWDSEC=1 sudo bash scripts/deploy.sh
+if [ "${WARDEN_SKIP_CROWDSEC:-0}" != "1" ]; then
+    log "Installing CrowdSec (scripts/install-crowdsec.sh; set WARDEN_SKIP_CROWDSEC=1 to skip)..."
+    export CROWDSEC_LAPI_PORT
+    if bash "${PROJECT_DIR}/scripts/install-crowdsec.sh" >> "$LOG_FILE" 2>&1; then
+        log "CrowdSec: creating bouncer keys and updating apps/api/.env (scripts/crowdsec-autoconfigure.sh)..."
+        export BACKEND_DIR PROJECT_DIR CROWDSEC_LAPI_PORT
+        bash "${PROJECT_DIR}/scripts/crowdsec-autoconfigure.sh" >> "$LOG_FILE" 2>&1 || warn "CrowdSec autoconfigure failed (see ${LOG_FILE}) — check cscli / LAPI on 127.0.0.1:${CROWDSEC_LAPI_PORT}"
+    else
+        warn "CrowdSec install failed (see ${LOG_FILE}) — fix apt/network or run WARDEN_SKIP_CROWDSEC=1 and install later"
+    fi
+else
+    log "Skipped CrowdSec (WARDEN_SKIP_CROWDSEC=1)"
+fi
+
 # Health check
 sleep 3
-if curl -s http://localhost:3001/api/health | grep -q "success"; then
+if curl -s "http://localhost:${WARDEN_API_PORT}/api/health" | grep -q "success"; then
     log "✅ Backend health check: PASSED"
 else
     warn "⚠️  Backend health check: FAILED (may need a moment to start)"
 fi
 
-if curl -s http://localhost:8080 | grep -q "<!doctype html"; then
+if curl -s "http://localhost:${WARDEN_UI_PORT}" | grep -q "<!doctype html"; then
     log "✅ Frontend health check: PASSED"
 else
     warn "⚠️  Frontend health check: FAILED (may need a moment to start)"

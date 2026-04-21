@@ -156,6 +156,21 @@ export class DomainsRepository {
         grpcEnabled: input.advancedConfig?.grpcEnabled || false,
         clientMaxBodySize: input.advancedConfig?.clientMaxBodySize !== undefined ? input.advancedConfig.clientMaxBodySize : DEFAULT_CLIENT_MAX_BODY_SIZE,
         customLocations: input.advancedConfig?.customLocations ? JSON.parse(JSON.stringify(input.advancedConfig.customLocations)) : null,
+        limitReqPerMinute:
+          input.advancedConfig?.limitReqPerMinute !== undefined
+            ? Math.max(0, input.advancedConfig.limitReqPerMinute)
+            : 0,
+        limitReqBurst:
+          input.advancedConfig?.limitReqBurst !== undefined
+            ? Math.max(1, Math.min(5000, input.advancedConfig.limitReqBurst))
+            : 20,
+        limitConnPerAddr:
+          input.advancedConfig?.limitConnPerAddr !== undefined
+            ? Math.max(0, input.advancedConfig.limitConnPerAddr)
+            : 0,
+        modsecEngineMode: input.advancedConfig?.modsecEngineMode ?? 'On',
+        crowdsecNginxEnabled: input.advancedConfig?.crowdsecNginxEnabled ?? false,
+        crowdsecAppsecEnabled: input.advancedConfig?.crowdsecAppsecEnabled ?? false,
         upstreams: {
           create: input.upstreams.map((u: CreateUpstreamData) => ({
             host: u.host,
@@ -272,6 +287,30 @@ export class DomainsRepository {
           input.advancedConfig?.customLocations !== undefined
             ? JSON.parse(JSON.stringify(input.advancedConfig.customLocations))
             : currentDomain.customLocations,
+        limitReqPerMinute:
+          input.advancedConfig?.limitReqPerMinute !== undefined
+            ? Math.max(0, input.advancedConfig.limitReqPerMinute)
+            : currentDomain.limitReqPerMinute,
+        limitReqBurst:
+          input.advancedConfig?.limitReqBurst !== undefined
+            ? Math.max(1, Math.min(5000, input.advancedConfig.limitReqBurst))
+            : currentDomain.limitReqBurst,
+        limitConnPerAddr:
+          input.advancedConfig?.limitConnPerAddr !== undefined
+            ? Math.max(0, input.advancedConfig.limitConnPerAddr)
+            : currentDomain.limitConnPerAddr,
+        modsecEngineMode:
+          input.advancedConfig?.modsecEngineMode !== undefined
+            ? input.advancedConfig.modsecEngineMode
+            : currentDomain.modsecEngineMode,
+        crowdsecNginxEnabled:
+          input.advancedConfig?.crowdsecNginxEnabled !== undefined
+            ? input.advancedConfig.crowdsecNginxEnabled
+            : currentDomain.crowdsecNginxEnabled,
+        crowdsecAppsecEnabled:
+          input.advancedConfig?.crowdsecAppsecEnabled !== undefined
+            ? input.advancedConfig.crowdsecAppsecEnabled
+            : currentDomain.crowdsecAppsecEnabled,
       },
     });
 

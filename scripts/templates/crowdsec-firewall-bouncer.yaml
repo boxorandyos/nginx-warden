@@ -1,0 +1,52 @@
+# Reference for cs-firewall-bouncer when integrating with Nginx Warden Phase 1 nftables.
+# Upstream default: https://github.com/crowdsecurity/cs-firewall-bouncer/blob/main/config/crowdsec-firewall-bouncer.yaml
+# Install on the host as /etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml (path may vary by distro).
+#
+# Warden renders table inet nginx_warden_filter with sets named by Fleet → Firewall
+# (defaults: crowdsec_blacklists / crowdsec6_blacklists). Use set-only mode so the
+# bouncer only fills those sets; Warden owns the chain rules.
+
+mode: nftables
+update_frequency: 10s
+log_mode: file
+log_dir: /var/log/
+log_level: info
+log_compression: true
+log_max_size: 100
+log_max_backups: 3
+log_max_age: 30
+api_url: http://127.0.0.1:9091/
+# Replace after cscli bouncers add … or use apply-crowdsec-firewall-bouncer-template.sh with CROWDSEC_BOUNCER_API_KEY
+api_key: REPLACE_WITH_CSCLI_BOUNCER_KEY
+insecure_skip_verify: false
+disable_ipv6: false
+deny_action: DROP
+deny_log: false
+supported_decisions_types:
+  - ban
+
+blacklists_ipv4: crowdsec_blacklists
+blacklists_ipv6: crowdsec6_blacklists
+
+nftables:
+  ipv4:
+    enabled: true
+    set-only: true
+    table: nginx_warden_filter
+    chain: input
+    priority: -10
+  ipv6:
+    enabled: true
+    set-only: true
+    table: nginx_warden_filter
+    chain: input
+    priority: -10
+
+nftables_hooks:
+  - input
+
+# Optional metrics (matches upstream cs-firewall-bouncer defaults)
+prometheus:
+  enabled: false
+  listen_addr: 127.0.0.1
+  listen_port: 60601

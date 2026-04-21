@@ -1,0 +1,7 @@
+# Example nginx snippet for CROWDSEC_APPSEC_INCLUDE (copy to e.g. /etc/nginx/modsec/crowdsec-appsec.inc).
+# Point CrowdSec AppSec / connector documentation at this path; content depends on your CrowdSec version.
+#
+# If you only need a no-op include so nginx -t passes before you add real rules:
+# (Some setups use modsecurity_rules_file instead — follow current CrowdSec AppSec docs.)
+
+# No mandatory directives here; add connector-provided ModSecurity/nginx rules when ready.

@@ -15,6 +15,8 @@ import {
 } from './backup.types';
 import { CreateBackupScheduleDto, UpdateBackupScheduleDto } from './dto';
 import { backupSchedulerService } from './services/backup-scheduler.service';
+import { nginxConfigService } from '../domains/services/nginx-config.service';
+import { DomainWithRelations } from '../domains/domains.types';
 
 const execAsync = promisify(exec);
 
@@ -1108,165 +1110,10 @@ export class BackupService {
   }
 
   /**
-   * Generate nginx config for backup restore
+   * Generate nginx config for backup restore (same as live generator)
    */
   private async generateNginxConfigForBackup(domain: any): Promise<void> {
-    const configPath = path.join(
-      BACKUP_CONSTANTS.NGINX_SITES_AVAILABLE,
-      `${domain.name}.conf`
-    );
-    const enabledPath = path.join(
-      BACKUP_CONSTANTS.NGINX_SITES_ENABLED,
-      `${domain.name}.conf`
-    );
-
-    const hasHttpsUpstream =
-      domain.upstreams?.some((u: any) => u.protocol === 'https') || false;
-    const upstreamProtocol = hasHttpsUpstream ? 'https' : 'http';
-
-    // Calculate keepalive connections: 10 connections per backend
-    const backendCount = domain.upstreams?.length || 0;
-    const keepaliveConnections = backendCount * 10;
-
-    // Generate WebSocket map block
-    const websocketMapBlock = `
-# WebSocket support - Map for connection upgrade
-map $http_upgrade $connection_upgrade {
-    default upgrade;
-    '' close;
-}
-
-`;
-
-    const upstreamBlock = `
-upstream ${domain.name.replace(/\./g, '_')}_backend {
-    ${domain.loadBalancer?.algorithm === 'least_conn' ? 'least_conn;' : ''}
-    ${domain.loadBalancer?.algorithm === 'ip_hash' ? 'ip_hash;' : ''}
-
-    ${(domain.upstreams || [])
-      .map(
-        (u: any) =>
-          `server ${u.host}:${u.port} weight=${u.weight || 1} max_fails=${
-            u.maxFails || 3
-          } fail_timeout=${u.failTimeout || 10}s;`
-      )
-      .join('\n    ')}
-    
-    # Keepalive connections - 10 per backend (${backendCount} backends)
-    keepalive ${keepaliveConnections};
-}
-`;
-
-    let httpServerBlock = `
-server {
-    listen 80;
-    server_name ${domain.name};
-
-    include /etc/nginx/conf.d/acl-rules.conf;
-    include /etc/nginx/snippets/acme-challenge.conf;
-
-    ${
-      domain.sslEnabled
-        ? `
-    return 301 https://$server_name$request_uri;
-    `
-        : `
-    ${domain.modsecEnabled ? 'modsecurity on;' : 'modsecurity off;'}
-
-    access_log /var/log/nginx/${domain.name}_access.log main;
-    error_log /var/log/nginx/${domain.name}_error.log warn;
-
-    location / {
-        proxy_pass ${upstreamProtocol}://${domain.name.replace(/\./g, '_')}_backend;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        
-        # WebSocket support
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-        
-        # WebSocket timeout settings
-        proxy_read_timeout 86400s;
-        proxy_send_timeout 86400s;
-    }
-
-    location /nginx_health {
-        access_log off;
-        return 200 "healthy\\n";
-        add_header Content-Type text/plain;
-    }
-    `
-    }
-}
-`;
-
-    let httpsServerBlock = '';
-    if (domain.sslEnabled && domain.sslCertificate) {
-      httpsServerBlock = `
-server {
-    listen 443 ssl http2;
-    server_name ${domain.name};
-
-    include /etc/nginx/conf.d/acl-rules.conf;
-
-    ssl_certificate /etc/nginx/ssl/${domain.name}.crt;
-    ssl_certificate_key /etc/nginx/ssl/${domain.name}.key;
-    ${
-      domain.sslCertificate.chain
-        ? `ssl_trusted_certificate /etc/nginx/ssl/${domain.name}.chain.crt;`
-        : ''
-    }
-
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_prefer_server_ciphers on;
-
-    ${domain.modsecEnabled ? 'modsecurity on;' : 'modsecurity off;'}
-
-    access_log /var/log/nginx/${domain.name}_ssl_access.log main;
-    error_log /var/log/nginx/${domain.name}_ssl_error.log warn;
-
-    location / {
-        proxy_pass ${upstreamProtocol}://${domain.name.replace(/\./g, '_')}_backend;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        
-        # WebSocket support
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-        
-        # WebSocket timeout settings
-        proxy_read_timeout 86400s;
-        proxy_send_timeout 86400s;
-    }
-
-    location /nginx_health {
-        access_log off;
-        return 200 "healthy\\n";
-        add_header Content-Type text/plain;
-    }
-}
-`;
-    }
-
-    const fullConfig = websocketMapBlock + upstreamBlock + httpServerBlock + httpsServerBlock;
-
-    await fs.mkdir(BACKUP_CONSTANTS.NGINX_SITES_AVAILABLE, { recursive: true });
-    await fs.mkdir(BACKUP_CONSTANTS.NGINX_SITES_ENABLED, { recursive: true });
-    await fs.writeFile(configPath, fullConfig);
-
-    if (domain.status === 'active') {
-      try {
-        await fs.unlink(enabledPath);
-      } catch {
-        // Ignore
-      }
-      await fs.symlink(configPath, enabledPath);
-    }
-
+    await nginxConfigService.generateConfig(domain as DomainWithRelations);
     logger.info(`Nginx configuration generated for ${domain.name}`);
   }
 }

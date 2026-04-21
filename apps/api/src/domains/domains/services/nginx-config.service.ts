@@ -7,6 +7,7 @@ import { PATHS } from '../../../shared/constants/paths.constants';
 import { DomainWithRelations } from '../domains.types';
 import { cloudflareIpsService } from './cloudflare-ips.service';
 import { DEFAULT_CLIENT_MAX_BODY_SIZE } from '../../../shared/constants/domain.constants';
+import { ModsecEngineMode } from '@prisma/client';
 
 const execAsync = promisify(exec);
 
@@ -57,11 +58,12 @@ export class NginxConfigService {
 
     // Generate configuration blocks
     const websocketMapBlock = this.generateWebSocketMapBlock();
+    const limitZonesBlock = this.generateLimitZonesBlock(domain);
     const upstreamBlock = this.generateUpstreamBlock(domain);
     const httpServerBlock = await this.generateHttpServerBlock(domain);
     const httpsServerBlock = await this.generateHttpsServerBlock(domain);
 
-    const fullConfig = websocketMapBlock + upstreamBlock + httpServerBlock + httpsServerBlock;
+    const fullConfig = websocketMapBlock + limitZonesBlock + upstreamBlock + httpServerBlock + httpsServerBlock;
 
     // Write configuration file
     try {
@@ -139,6 +141,78 @@ map $http_upgrade $connection_upgrade {
 }
 
 `;
+  }
+
+  /** Safe suffix for limit_req_zone / limit_conn_zone names */
+  private limitZoneSuffix(domain: DomainWithRelations): string {
+    return domain.name.replace(/[^a-zA-Z0-9_]/g, '_');
+  }
+
+  /**
+   * limit_* zones must live in http context (this file is included inside http {})
+   */
+  private generateLimitZonesBlock(domain: DomainWithRelations): string {
+    const z = this.limitZoneSuffix(domain);
+    const reqZone = `wr_${z}`;
+    const connZone = `wc_${z}`;
+    const lines: string[] = [];
+    if (domain.limitReqPerMinute > 0) {
+      const rate = Math.min(domain.limitReqPerMinute, 100000);
+      lines.push(`limit_req_zone $binary_remote_addr zone=${reqZone}:10m rate=${rate}r/m;`);
+    }
+    if (domain.limitConnPerAddr > 0) {
+      lines.push(`limit_conn_zone $binary_remote_addr zone=${connZone}:10m;`);
+    }
+    if (lines.length === 0) return '';
+    return `# L7 rate limits (Nginx Warden — per domain)\n${lines.join('\n')}\n\n`;
+  }
+
+  private generateLimitLocationDirectives(domain: DomainWithRelations): string {
+    const z = this.limitZoneSuffix(domain);
+    const reqZone = `wr_${z}`;
+    const connZone = `wc_${z}`;
+    const parts: string[] = [];
+    if (domain.limitReqPerMinute > 0) {
+      const burst = Math.max(1, Math.min(domain.limitReqBurst || 20, 5000));
+      parts.push(`limit_req zone=${reqZone} burst=${burst} nodelay;`);
+    }
+    if (domain.limitConnPerAddr > 0) {
+      const max = Math.min(domain.limitConnPerAddr, 10000);
+      parts.push(`limit_conn ${connZone} ${max};`);
+    }
+    if (parts.length === 0) return '';
+    return `        ${parts.join('\n        ')}\n`;
+  }
+
+  private generateModsecurityCrowdsecServerBlock(domain: DomainWithRelations): string {
+    const lines: string[] = [];
+    lines.push(domain.modsecEnabled ? '    modsecurity on;' : '    modsecurity off;');
+    if (domain.modsecEnabled && domain.modsecEngineMode === ModsecEngineMode.DetectionOnly) {
+      lines.push(`    modsecurity_rules 'SecRuleEngine DetectionOnly';`);
+    }
+    if (domain.crowdsecAppsecEnabled) {
+      const inc = process.env.CROWDSEC_APPSEC_INCLUDE?.trim();
+      if (inc) {
+        lines.push(`    include ${inc};`);
+      } else {
+        lines.push(
+          '    # CrowdSec AppSec: set CROWDSEC_APPSEC_INCLUDE in API env to an nginx include with connector rules'
+        );
+      }
+    }
+    if (domain.crowdsecNginxEnabled) {
+      if (process.env.ENABLE_CROWDSEC_NGINX_LUA === 'true') {
+        lines.push(`    access_by_lua_block {`);
+        lines.push(`      local cs = require "crowdsec"`);
+        lines.push(`      cs.run()`);
+        lines.push(`    }`);
+      } else {
+        lines.push(
+          '    # CrowdSec L7: set ENABLE_CROWDSEC_NGINX_LUA=true on API after installing crowdsec-nginx-bouncer (Lua)'
+        );
+      }
+    }
+    return lines.join('\n') + '\n';
   }
 
   /**
@@ -275,13 +349,12 @@ ${accessListsBlock}
     # Maximum request body size
     client_max_body_size ${clientMaxBodySize}M;
 
-    ${domain.modsecEnabled ? 'modsecurity on;' : 'modsecurity off;'}
-
+${this.generateModsecurityCrowdsecServerBlock(domain)}
     access_log /var/log/nginx/${domain.name}_access.log main;
     error_log /var/log/nginx/${domain.name}_error.log warn;
 
     location / {
-        ${this.generateProxyHeaders(domain)}
+        ${this.generateLimitLocationDirectives(domain)}${this.generateProxyHeaders(domain)}
         proxy_pass ${upstreamProtocol}://${upstreamName}_backend;
 
         ${this.generateHttpsBackendSettings(domain)}
@@ -363,8 +436,7 @@ ${accessListsBlock}
     # Maximum request body size
     client_max_body_size ${clientMaxBodySize}M;
 
-    ${domain.modsecEnabled ? 'modsecurity on;' : 'modsecurity off;'}
-
+${this.generateModsecurityCrowdsecServerBlock(domain)}
     access_log /var/log/nginx/${domain.name}_ssl_access.log main;
     error_log /var/log/nginx/${domain.name}_ssl_error.log warn;
 
@@ -578,7 +650,7 @@ ${customLocations}
         grpc_send_timeout 60s;
         grpc_read_timeout 60s;`;
 
-    return `# gRPC Configuration
+    return `${this.generateLimitLocationDirectives(domain)}        # gRPC Configuration
         grpc_pass ${grpcScheme}${upstreamName}_backend;
 ${sslSettings}
 ${timeoutSettings}
@@ -589,7 +661,7 @@ ${healthCheckSettings}`;
    * Generate complete proxy location block with SSL settings
    */
   private generateProxyLocationBlock(domain: DomainWithRelations, upstreamName: string, protocol: string): string {
-    return `${this.generateProxyHeaders(domain)}
+    return `${this.generateLimitLocationDirectives(domain)}${this.generateProxyHeaders(domain)}
         
         # Proxy Configuration
         proxy_pass ${protocol}://${upstreamName}_backend;

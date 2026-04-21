@@ -1,4 +1,13 @@
-import { Domain, Upstream, LoadBalancerConfig, SSLCertificate, ModSecRule, AccessListDomain, AccessList } from '@prisma/client';
+import {
+  Domain,
+  Upstream,
+  LoadBalancerConfig,
+  SSLCertificate,
+  ModSecRule,
+  AccessListDomain,
+  AccessList,
+  ModsecEngineMode,
+} from '@prisma/client';
 
 /**
  * Domain types and interfaces
@@ -55,6 +64,14 @@ export interface AdvancedConfigData {
   grpcEnabled?: boolean; // Enable gRPC support (default proxy_pass replacement)
   clientMaxBodySize?: number; // Maximum request body size in MB (default: 100)
   customLocations?: CustomLocationData[]; // Custom location blocks
+  /** Requests per minute per client IP; 0 = off */
+  limitReqPerMinute?: number;
+  limitReqBurst?: number;
+  /** Concurrent connections per client IP; 0 = off */
+  limitConnPerAddr?: number;
+  modsecEngineMode?: ModsecEngineMode;
+  crowdsecNginxEnabled?: boolean;
+  crowdsecAppsecEnabled?: boolean;
 }
 
 // Domain creation input

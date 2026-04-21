@@ -43,7 +43,7 @@ export default function Configuration() {
   }, [config?.portalAccessOrigins]);
 
   /** Poll log on an interval while this page is open (admin) so the tail updates without clicking Refresh */
-  const UPDATE_LOG_INTERVAL_MS = 3500;
+  const UPDATE_LOG_INTERVAL_MS = 1000;
   const UPDATE_LOG_POLL_MAX_MS = 45 * 60 * 1000;
 
   const {

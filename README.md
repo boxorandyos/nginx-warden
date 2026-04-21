@@ -22,7 +22,7 @@ The **supported production target** is **Linux** (Ubuntu/Debian-style) with **ro
 
 | Action | Command / location |
 |--------|-------------------|
-| **First-time production install** | `sudo bash scripts/deploy.sh` (from repo root) |
+| **First-time production install** | `sudo bash scripts/deploy.sh` (from repo root; **CrowdSec** packages + LAPI keys in `apps/api/.env` + firewall template unless `WARDEN_SKIP_CROWDSEC=1`) |
 | **Upgrade (CLI)** | `git pull` then `sudo bash scripts/update.sh` |
 | **Upgrade (UI)** | Fleet → **Configuration** → *Download & update* (admin, API as root) |
 | **Backend env** | `apps/api/.env` |
@@ -35,14 +35,17 @@ Install path = **wherever you clone the repo** (e.g. `/var/www/html/nginx-warden
 
 ## Ports
 
+Defaults come from `scripts/deploy.sh` (override with env vars such as `WARDEN_UI_PORT`, `WARDEN_API_PORT`, `WARDEN_DB_HOST_PORT`, `CROWDSEC_LAPI_PORT`).
+
 | Port | Service |
 |------|---------|
-| **8080** | Admin UI (Vite preview in production systemd unit) |
+| **8088** | Admin UI (Vite `pnpm preview` in production systemd unit; default avoids clashing with other services) |
 | **3001** | REST API |
+| **9091** | CrowdSec Local API (loopback; `scripts/install-crowdsec.sh`) |
 | **80 / 443** | Sites you front with nginx (managed via the product) |
-| **5432** | PostgreSQL (often via Docker; see `deploy.sh`) |
+| **15432** | PostgreSQL on the **host** (Docker maps container `5432` → host `15432`; see `deploy.sh`) |
 
-Health check: `GET http://<host>:3001/api/health`
+Health check: `GET http://<host>:3001/api/health` (or your `WARDEN_API_PORT`)
 
 ---
 
@@ -56,7 +59,7 @@ cd nginx-warden
 sudo bash scripts/deploy.sh
 ```
 
-The script installs dependencies, builds API + UI, configures **systemd** units (`nginx-warden-backend`, `nginx-warden-frontend`), nginx/ModSecurity where applicable, and writes **`apps/api/.env`** and **`apps/web/.env`**. Review generated secrets under `/root/.nginx-warden-credentials`.
+The script installs dependencies, builds API + UI, configures **systemd** units (`nginx-warden-backend`, `nginx-warden-frontend`), nginx/ModSecurity where applicable, runs **`scripts/install-crowdsec.sh`** then **`scripts/crowdsec-autoconfigure.sh`** (CrowdSec engine + nftables firewall bouncer + LAPI bouncer keys written to **`apps/api/.env`**, firewall template applied, backend restarted; skip all CrowdSec with `WARDEN_SKIP_CROWDSEC=1`), and writes **`apps/api/.env`** and **`apps/web/.env`**. Review generated secrets under **`/root/.nginx-warden-credentials`** (includes CrowdSec keys after autoconfigure).
 
 ### Configuration highlights
 

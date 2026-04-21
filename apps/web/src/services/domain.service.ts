@@ -1,5 +1,25 @@
 import api from './api';
-import {  Domain, Upstream, LoadBalancerConfig, Pagination, ApiResponse } from '@/types';
+import { Domain, Pagination } from '@/types';
+
+export interface RealIpConfigRequest {
+  realIpEnabled?: boolean;
+  realIpCloudflare?: boolean;
+  realIpCustomCidrs?: string[];
+}
+
+export interface AdvancedConfigRequest {
+  hstsEnabled?: boolean;
+  http2Enabled?: boolean;
+  grpcEnabled?: boolean;
+  clientMaxBodySize?: number;
+  customLocations?: unknown[];
+  limitReqPerMinute?: number;
+  limitReqBurst?: number;
+  limitConnPerAddr?: number;
+  modsecEngineMode?: 'On' | 'DetectionOnly';
+  crowdsecNginxEnabled?: boolean;
+  crowdsecAppsecEnabled?: boolean;
+}
 
 export interface CreateDomainRequest {
   name: string;
@@ -7,6 +27,8 @@ export interface CreateDomainRequest {
   upstreams: {
     host: string;
     port: number;
+    protocol?: string;
+    sslVerify?: boolean;
     weight?: number;
     maxFails?: number;
     failTimeout?: number;
@@ -18,6 +40,10 @@ export interface CreateDomainRequest {
     healthCheckTimeout?: number;
     healthCheckPath?: string;
   };
+  realIpConfig?: RealIpConfigRequest;
+  advancedConfig?: AdvancedConfigRequest;
+  autoCreateSSL?: boolean;
+  sslEmail?: string;
 }
 
 export interface UpdateDomainRequest {
@@ -27,6 +53,8 @@ export interface UpdateDomainRequest {
   upstreams?: {
     host: string;
     port: number;
+    protocol?: string;
+    sslVerify?: boolean;
     weight?: number;
     maxFails?: number;
     failTimeout?: number;
@@ -38,6 +66,8 @@ export interface UpdateDomainRequest {
     healthCheckTimeout?: number;
     healthCheckPath?: string;
   };
+  realIpConfig?: RealIpConfigRequest;
+  advancedConfig?: AdvancedConfigRequest;
 }
 
 /**

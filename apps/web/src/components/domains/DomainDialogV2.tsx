@@ -74,6 +74,13 @@ interface FormData {
   grpcEnabled: boolean;
   clientMaxBodySize: number;
   customLocations: CustomLocationFormData[];
+
+  limitReqPerMinute: number;
+  limitReqBurst: number;
+  limitConnPerAddr: number;
+  modsecEngineMode: 'On' | 'DetectionOnly';
+  crowdsecNginxEnabled: boolean;
+  crowdsecAppsecEnabled: boolean;
 }
 
 interface DomainDialogV2Props {
@@ -114,6 +121,12 @@ export function DomainDialogV2({ open, onOpenChange, domain, onSave, isLoading =
       grpcEnabled: false,
       clientMaxBodySize: 100,
       customLocations: [],
+      limitReqPerMinute: 0,
+      limitReqBurst: 20,
+      limitConnPerAddr: 0,
+      modsecEngineMode: 'On',
+      crowdsecNginxEnabled: false,
+      crowdsecAppsecEnabled: false,
     },
   });
 
@@ -163,6 +176,12 @@ export function DomainDialogV2({ open, onOpenChange, domain, onSave, isLoading =
           grpcEnabled: (domain as any).grpcEnabled || false,
           clientMaxBodySize: (domain as any).clientMaxBodySize || 100,
           customLocations: (domain as any).customLocations || [],
+          limitReqPerMinute: (domain as any).limitReqPerMinute ?? 0,
+          limitReqBurst: (domain as any).limitReqBurst ?? 20,
+          limitConnPerAddr: (domain as any).limitConnPerAddr ?? 0,
+          modsecEngineMode: ((domain as any).modsecEngineMode as 'On' | 'DetectionOnly') || 'On',
+          crowdsecNginxEnabled: (domain as any).crowdsecNginxEnabled ?? false,
+          crowdsecAppsecEnabled: (domain as any).crowdsecAppsecEnabled ?? false,
         });
       } else {
         // Create mode
@@ -185,6 +204,12 @@ export function DomainDialogV2({ open, onOpenChange, domain, onSave, isLoading =
           grpcEnabled: false,
           clientMaxBodySize: 100,
           customLocations: [],
+          limitReqPerMinute: 0,
+          limitReqBurst: 20,
+          limitConnPerAddr: 0,
+          modsecEngineMode: 'On',
+          crowdsecNginxEnabled: false,
+          crowdsecAppsecEnabled: false,
         });
       }
     }
@@ -239,6 +264,12 @@ export function DomainDialogV2({ open, onOpenChange, domain, onSave, isLoading =
         grpcEnabled: data.grpcEnabled,
         clientMaxBodySize: Number(data.clientMaxBodySize),
         customLocations: data.customLocations.filter(loc => loc.path && loc.upstreams.length > 0),
+        limitReqPerMinute: Math.max(0, Number(data.limitReqPerMinute) || 0),
+        limitReqBurst: Math.max(1, Number(data.limitReqBurst) || 20),
+        limitConnPerAddr: Math.max(0, Number(data.limitConnPerAddr) || 0),
+        modsecEngineMode: data.modsecEngineMode,
+        crowdsecNginxEnabled: data.crowdsecNginxEnabled,
+        crowdsecAppsecEnabled: data.crowdsecAppsecEnabled,
       },
     };
 
@@ -479,6 +510,54 @@ export function DomainDialogV2({ open, onOpenChange, domain, onSave, isLoading =
                 />
               </div>
 
+              <div className="p-3 border rounded-lg space-y-2">
+                <Label htmlFor="modsecEngineMode">{t('domains.security.modsecEngineMode')}</Label>
+                <p className="text-sm text-muted-foreground">{t('domains.security.modsecEngineModeHint')}</p>
+                <Controller
+                  name="modsecEngineMode"
+                  control={control}
+                  render={({ field }) => (
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger id="modsecEngineMode" className="max-w-md">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="On">{t('domains.security.modsecEngineOn')}</SelectItem>
+                        <SelectItem value="DetectionOnly">{t('domains.security.modsecEngineDetection')}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3 border rounded-lg">
+                <div>
+                  <Label htmlFor="crowdsecNginx">{t('domains.security.crowdsecNginx')}</Label>
+                  <p className="text-sm text-muted-foreground">{t('domains.security.crowdsecNginxHint')}</p>
+                </div>
+                <Controller
+                  name="crowdsecNginxEnabled"
+                  control={control}
+                  render={({ field }) => (
+                    <Switch id="crowdsecNginx" checked={field.value} onCheckedChange={field.onChange} />
+                  )}
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3 border rounded-lg">
+                <div>
+                  <Label htmlFor="crowdsecAppsec">{t('domains.security.crowdsecAppsec')}</Label>
+                  <p className="text-sm text-muted-foreground">{t('domains.security.crowdsecAppsecHint')}</p>
+                </div>
+                <Controller
+                  name="crowdsecAppsecEnabled"
+                  control={control}
+                  render={({ field }) => (
+                    <Switch id="crowdsecAppsec" checked={field.value} onCheckedChange={field.onChange} />
+                  )}
+                />
+              </div>
+
               {!domain && (
                 <>
                   <div className="flex items-center justify-between p-3 border rounded-lg">
@@ -693,6 +772,40 @@ export function DomainDialogV2({ open, onOpenChange, domain, onSave, isLoading =
                       {errors.clientMaxBodySize && (
                         <p className="text-sm text-destructive">{errors.clientMaxBodySize.message}</p>
                       )}
+                    </div>
+                  </div>
+
+                  <div className="p-3 border rounded-lg space-y-3">
+                    <h4 className="text-sm font-medium">{t('domains.security.l7RateTitle')}</h4>
+                    <p className="text-xs text-muted-foreground">{t('domains.security.l7RateHint')}</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="space-y-1">
+                        <Label htmlFor="limitReqPerMinute">{t('domains.security.limitReqPerMinute')}</Label>
+                        <Input
+                          id="limitReqPerMinute"
+                          type="number"
+                          min={0}
+                          {...register('limitReqPerMinute', { min: 0 })}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="limitReqBurst">{t('domains.security.limitReqBurst')}</Label>
+                        <Input
+                          id="limitReqBurst"
+                          type="number"
+                          min={1}
+                          {...register('limitReqBurst', { min: 1 })}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="limitConnPerAddr">{t('domains.security.limitConnPerAddr')}</Label>
+                        <Input
+                          id="limitConnPerAddr"
+                          type="number"
+                          min={0}
+                          {...register('limitConnPerAddr', { min: 0 })}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>

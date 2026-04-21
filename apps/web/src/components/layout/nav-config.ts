@@ -14,6 +14,7 @@ import {
   Server,
   LayoutTemplate,
   Settings,
+  Flame,
 } from 'lucide-react';
 
 /** Distinct section-based IA (not sidebar-style “groups”) */
@@ -46,6 +47,7 @@ export const appNavSections: NavSection[] = [
     sectionKey: 'nav.section.barrier',
     items: [
       { path: '/modsecurity', navKey: 'nav.modsecurity', icon: Shield },
+      { path: '/firewall', navKey: 'nav.firewall', icon: Flame },
       { path: '/acl', navKey: 'nav.acl', icon: UserCog },
       { path: '/access-lists', navKey: 'nav.access-lists', icon: Lock },
     ],
