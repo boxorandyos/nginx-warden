@@ -15,11 +15,12 @@ router.use(authenticate);
 router.get('/', (req, res) => aclController.getAclRules(req, res));
 
 /**
- * @route   GET /api/acl/:id
- * @desc    Get single ACL rule
+ * @route   GET /api/acl/preview
+ * @desc    Preview ACL configuration without applying
  * @access  Private (all roles)
+ * @note    Must be registered BEFORE GET /:id or "preview" is captured as an id.
  */
-router.get('/:id', (req, res) => aclController.getAclRule(req, res));
+router.get('/preview', (req, res) => aclController.previewAclConfig(req, res));
 
 /**
  * @route   POST /api/acl
@@ -29,18 +30,19 @@ router.get('/:id', (req, res) => aclController.getAclRule(req, res));
 router.post('/', authorize('admin', 'moderator'), (req, res) => aclController.createAclRule(req, res));
 
 /**
- * @route   GET /api/acl/preview
- * @desc    Preview ACL configuration without applying
- * @access  Private (all roles)
- */
-router.get('/preview', (req, res) => aclController.previewAclConfig(req, res));
-
-/**
  * @route   POST /api/acl/apply
  * @desc    Apply ACL rules to Nginx
  * @access  Private (admin, moderator)
+ * @note    Before any /:id route that could match "apply" (if added later).
  */
 router.post('/apply', authorize('admin', 'moderator'), (req, res) => aclController.applyAclToNginx(req, res));
+
+/**
+ * @route   GET /api/acl/:id
+ * @desc    Get single ACL rule
+ * @access  Private (all roles)
+ */
+router.get('/:id', (req, res) => aclController.getAclRule(req, res));
 
 /**
  * @route   PUT /api/acl/:id
