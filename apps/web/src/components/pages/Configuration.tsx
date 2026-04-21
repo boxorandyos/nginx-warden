@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Settings, Save, Loader2, RotateCw, Download } from 'lucide-react';
@@ -19,7 +19,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
 import { systemConfigService } from '@/services/system-config.service';
 import { systemConfigQueryOptions } from '@/queries/system-config.query-options';
@@ -36,6 +35,7 @@ export default function Configuration() {
   const [text, setText] = useState('');
   /** Poll server log after scheduling an update until completion or timeout */
   const [pollUpdateLog, setPollUpdateLog] = useState(false);
+  const logScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const origins = config?.portalAccessOrigins ?? [];
@@ -79,6 +79,17 @@ export default function Configuration() {
       setPollUpdateLog(false);
     }
   }, [pollUpdateLog, updateLogRes?.content]);
+
+  /** Keep the log view pinned to the latest lines (tail) as content updates */
+  useEffect(() => {
+    const el = logScrollRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        el.scrollTop = el.scrollHeight;
+      });
+    });
+  }, [updateLogRes?.content, isUpdateLogFetching]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -280,7 +291,13 @@ export default function Configuration() {
               {isUpdateLogError && !updateLogRes && (
                 <p className="text-sm text-muted-foreground">{t('configuration.systemUpdate.logUnavailable')}</p>
               )}
-              <ScrollArea className="h-64 rounded-md border border-border bg-muted/30 p-3">
+              {updateLogRes?.truncated && (
+                <p className="text-xs text-muted-foreground">{t('configuration.systemUpdate.logTruncated')}</p>
+              )}
+              <div
+                ref={logScrollRef}
+                className="h-64 overflow-y-auto overflow-x-hidden rounded-md border border-border bg-muted/30 p-3"
+              >
                 <pre className="whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed">
                   {(() => {
                     if (isUpdateLogPending && !updateLogRes) {
@@ -298,7 +315,7 @@ export default function Configuration() {
                     return '';
                   })()}
                 </pre>
-              </ScrollArea>
+              </div>
             </div>
           )}
         </CardContent>
