@@ -6,6 +6,7 @@ import {
   updatePortalAccessOrigins,
   restartFrontend,
   runSystemUpdate,
+  getSystemUpdateLog,
   connectToMaster,
   disconnectFromMaster,
   testMasterConnection,
@@ -23,6 +24,7 @@ router.put('/node-mode', updateNodeMode);
 router.put('/portal-access', authorize('admin'), updatePortalAccessOrigins);
 router.post('/restart-frontend', authorize('admin'), restartFrontend);
 router.post('/system-update', authorize('admin'), runSystemUpdate);
+router.get('/system-update-log', authorize('admin'), getSystemUpdateLog);
 
 // Slave mode routes
 router.post('/connect-master', connectToMaster);

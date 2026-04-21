@@ -1,10 +1,54 @@
 import fs from 'node:fs';
+import { open } from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import logger from '../../utils/logger';
 
 /** Same path as scripts/update.sh (LOG_FILE) — shown in API response */
 export const NGINX_WARDEN_UI_UPDATE_LOG = '/var/log/nginx-warden-ui-update.log';
+
+const LOG_TAIL_MAX_BYTES = 120_000;
+
+export type SystemUpdateLogPayload = {
+  content: string;
+  path: string;
+  exists: boolean;
+  truncated: boolean;
+};
+
+function resolveUiUpdateLogPath(): string {
+  const fromEnv = process.env.NGINX_WARDEN_UI_UPDATE_LOG?.trim();
+  return fromEnv && fromEnv.length > 0 ? fromEnv : NGINX_WARDEN_UI_UPDATE_LOG;
+}
+
+/**
+ * Read the tail of the UI update log (same file scripts/update.sh writes to).
+ */
+export async function readSystemUpdateLogTail(): Promise<SystemUpdateLogPayload> {
+  const logPath = path.resolve(resolveUiUpdateLogPath());
+  if (!fs.existsSync(logPath) || !fs.statSync(logPath).isFile()) {
+    return { content: '', path: logPath, exists: false, truncated: false };
+  }
+  const stat = fs.statSync(logPath);
+  if (stat.size === 0) {
+    return { content: '', path: logPath, exists: true, truncated: false };
+  }
+  const start = stat.size > LOG_TAIL_MAX_BYTES ? stat.size - LOG_TAIL_MAX_BYTES : 0;
+  const truncated = start > 0;
+  const len = stat.size - start;
+  const buf = Buffer.alloc(len);
+  const fh = await open(logPath, 'r');
+  try {
+    await fh.read(buf, 0, len, start);
+  } finally {
+    await fh.close();
+  }
+  let content = buf.toString('utf8');
+  if (truncated) {
+    content = `…(truncated, showing last ${LOG_TAIL_MAX_BYTES} bytes)\n${content}`;
+  }
+  return { content, path: logPath, exists: true, truncated };
+}
 
 export type SystemUpdateResult = {
   output: string;

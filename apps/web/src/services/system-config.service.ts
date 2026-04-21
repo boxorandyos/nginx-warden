@@ -36,6 +36,14 @@ export const systemConfigService = {
     return response.data;
   },
 
+  /** Tail of /var/log/nginx-warden-ui-update.log (short timeout; safe to poll while backend restarts) */
+  getSystemUpdateLog: async (): Promise<
+    ApiResponse<{ content: string; path: string; exists: boolean; truncated: boolean }>
+  > => {
+    const response = await api.get('/system-config/system-update-log', { timeout: 15_000 });
+    return response.data;
+  },
+
   /**
    * Connect to master node (for slave mode)
    */

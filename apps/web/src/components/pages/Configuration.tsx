@@ -34,12 +34,51 @@ export default function Configuration() {
   const config = data?.data;
 
   const [text, setText] = useState('');
-  const [updateOutput, setUpdateOutput] = useState<string | null>(null);
+  /** Poll server log after scheduling an update until completion or timeout */
+  const [pollUpdateLog, setPollUpdateLog] = useState(false);
 
   useEffect(() => {
     const origins = config?.portalAccessOrigins ?? [];
     setText(origins.join('\n'));
   }, [config?.portalAccessOrigins]);
+
+  const UPDATE_LOG_POLL_MS = 5000;
+  const UPDATE_LOG_POLL_MAX_MS = 45 * 60 * 1000;
+
+  const {
+    data: updateLogRes,
+    isPending: isUpdateLogPending,
+    isFetching: isUpdateLogFetching,
+    isError: isUpdateLogError,
+    refetch: refetchUpdateLog,
+  } = useQuery({
+    queryKey: ['system-config', 'system-update-log'],
+    queryFn: async () => {
+      const res = await systemConfigService.getSystemUpdateLog();
+      if (!res.success || !res.data) {
+        throw new Error(res.message || 'Failed to load update log');
+      }
+      return res.data;
+    },
+    enabled: isAdmin,
+    staleTime: 15_000,
+    refetchInterval: pollUpdateLog ? UPDATE_LOG_POLL_MS : false,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (!pollUpdateLog) return;
+    const t = setTimeout(() => setPollUpdateLog(false), UPDATE_LOG_POLL_MAX_MS);
+    return () => clearTimeout(t);
+  }, [pollUpdateLog]);
+
+  useEffect(() => {
+    const content = updateLogRes?.content;
+    if (!pollUpdateLog || !content) return;
+    if (content.includes('Update Completed Successfully!')) {
+      setPollUpdateLog(false);
+    }
+  }, [pollUpdateLog, updateLogRes?.content]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -52,7 +91,7 @@ export default function Configuration() {
     onSuccess: (res) => {
       if (res.success) {
         toast.success(t('configuration.toast.saved'));
-        queryClient.invalidateQueries({ queryKey: ['system-config'] });
+        queryClient.invalidateQueries({ queryKey: ['system-config'], exact: true });
       } else {
         toast.error(res.message || t('configuration.toast.saveFailed'));
       }
@@ -73,15 +112,20 @@ export default function Configuration() {
   const systemUpdateMutation = useMutation({
     mutationFn: () => systemConfigService.runSystemUpdate(),
     onSuccess: (res) => {
-      if (res.success && res.data?.output) {
-        setUpdateOutput(res.data.output);
+      if (!res.success) {
+        toast.error(res.message || t('configuration.systemUpdate.toast.failed'));
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ['system-config', 'system-update-log'] });
+      if (res.data?.output) {
         toast.success(
           res.data.scheduled
             ? t('configuration.systemUpdate.toast.scheduled')
             : t('configuration.systemUpdate.toast.success')
         );
-      } else {
-        toast.error(res.message || t('configuration.systemUpdate.toast.failed'));
+      }
+      if (res.data?.scheduled) {
+        setPollUpdateLog(true);
       }
     },
     onError: (err: unknown) => {
@@ -90,7 +134,6 @@ export default function Configuration() {
           ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
           : undefined;
       toast.error(msg || t('configuration.systemUpdate.toast.failed'));
-      setUpdateOutput(msg ?? null);
     },
   });
 
@@ -208,12 +251,52 @@ export default function Configuration() {
             <AlertTitle>{t('configuration.systemUpdate.warningTitle')}</AlertTitle>
             <AlertDescription className="text-sm">{t('configuration.systemUpdate.warningHint')}</AlertDescription>
           </Alert>
-          {updateOutput && (
+          {isAdmin && (
             <div className="space-y-2">
-              <Label>{t('configuration.systemUpdate.outputLabel')}</Label>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label>{t('configuration.systemUpdate.outputLabel')}</Label>
+                <div className="flex items-center gap-2">
+                  {pollUpdateLog && (
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      {t('configuration.systemUpdate.logPolling')}
+                    </span>
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    disabled={isUpdateLogFetching}
+                    onClick={() => refetchUpdateLog()}
+                  >
+                    {isUpdateLogFetching ? (
+                      <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                    ) : null}
+                    {t('configuration.systemUpdate.logRefresh')}
+                  </Button>
+                </div>
+              </div>
+              {isUpdateLogError && !updateLogRes && (
+                <p className="text-sm text-muted-foreground">{t('configuration.systemUpdate.logUnavailable')}</p>
+              )}
               <ScrollArea className="h-64 rounded-md border border-border bg-muted/30 p-3">
                 <pre className="whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed">
-                  {updateOutput}
+                  {(() => {
+                    if (isUpdateLogPending && !updateLogRes) {
+                      return t('configuration.systemUpdate.logLoading');
+                    }
+                    if (updateLogRes?.content && updateLogRes.content.length > 0) {
+                      return updateLogRes.content;
+                    }
+                    if (updateLogRes && !updateLogRes.exists) {
+                      return t('configuration.systemUpdate.logEmpty');
+                    }
+                    if (updateLogRes?.exists && updateLogRes.content === '') {
+                      return t('configuration.systemUpdate.logFileEmpty');
+                    }
+                    return '';
+                  })()}
                 </pre>
               </ScrollArea>
             </div>

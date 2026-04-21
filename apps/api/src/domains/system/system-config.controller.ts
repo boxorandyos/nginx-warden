@@ -2,7 +2,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../../middleware/auth';
 import logger from '../../utils/logger';
 import { SystemConfigService } from './system-config.service';
-import { runGithubUpdateAndInstallScript } from './system-update.service';
+import { readSystemUpdateLogTail, runGithubUpdateAndInstallScript } from './system-update.service';
 import { ResponseUtil } from '../../shared/utils/response.util';
 import { ValidationError, NotFoundError } from '../../shared/errors/app-error';
 
@@ -65,6 +65,20 @@ export const runSystemUpdate = async (req: AuthRequest, res: Response): Promise<
   } catch (error: unknown) {
     logger.error('System update error:', error);
     const message = error instanceof Error ? error.message : 'System update failed';
+    ResponseUtil.error(res, message, 500);
+  }
+};
+
+/**
+ * Tail of the server update log (admin only) — for UI polling without long-running POST.
+ */
+export const getSystemUpdateLog = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const payload = await readSystemUpdateLogTail();
+    ResponseUtil.success(res, payload);
+  } catch (error: unknown) {
+    logger.error('Read system update log error:', error);
+    const message = error instanceof Error ? error.message : 'Failed to read update log';
     ResponseUtil.error(res, message, 500);
   }
 };
