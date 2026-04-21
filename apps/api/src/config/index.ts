@@ -20,7 +20,9 @@ export const config = {
   },
   
   cors: {
-    origin: process.env.CORS_ORIGIN?.split(',').map(o => o.trim()) || ['http://localhost:5173', 'http://localhost:8080'],
+    origin:
+      process.env.CORS_ORIGIN?.split(',').map(o => o.trim()) ||
+      ['http://localhost:5173', 'http://localhost:8088', 'http://127.0.0.1:8088', 'http://localhost:8080'],
   },
   
   security: {

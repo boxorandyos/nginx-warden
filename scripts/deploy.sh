@@ -93,7 +93,8 @@ apt-get install -y --no-install-recommends \
   python3 \
   git \
   gnupg \
-  >> "$LOG_FILE" 2>&1 || error "Failed to install base packages (apt: openssl curl wget ca-certificates python3 git gnupg)"
+  iproute2 \
+  >> "$LOG_FILE" 2>&1 || error "Failed to install base packages (apt: openssl curl wget ca-certificates python3 git gnupg iproute2)"
 
 if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
     error "Neither curl nor wget is available after apt install — check apt/network."
@@ -104,6 +105,12 @@ DB_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
 JWT_ACCESS_SECRET=$(openssl rand -base64 64 | tr -d "=+/" | cut -c1-64)
 JWT_REFRESH_SECRET=$(openssl rand -base64 64 | tr -d "=+/" | cut -c1-64)
 SESSION_SECRET=$(openssl rand -base64 64 | tr -d "=+/" | cut -c1-64)
+
+# shellcheck source=lib/warden-access-ip.sh
+source "${SCRIPT_DIR}/lib/warden-access-ip.sh"
+warden_resolve_access_ips_and_cors "${WARDEN_UI_PORT}"
+log "Primary access IP (CORS/CSP, LAN first): ${ACCESS_IP}"
+log "Public IP (optional extra CORS if different): ${PUBLIC_IP}"
 
 log "=================================="
 log "Nginx Warden Deployment Started"
@@ -116,27 +123,18 @@ cat > /etc/nginx-warden/ports.env <<EOF
 WARDEN_API_PORT=${WARDEN_API_PORT}
 WARDEN_UI_PORT=${WARDEN_UI_PORT}
 WARDEN_DB_HOST_PORT=${WARDEN_DB_HOST_PORT}
+WARDEN_ACCESS_IP=${ACCESS_IP}
 # CrowdSec Local API (install-crowdsec.sh); override: CROWDSEC_LAPI_PORT=9081 ./scripts/deploy.sh
 CROWDSEC_LAPI_PORT=${CROWDSEC_LAPI_PORT}
 EOF
 chmod 644 /etc/nginx-warden/ports.env
-log "Port file: /etc/nginx-warden/ports.env (API=${WARDEN_API_PORT} UI=${WARDEN_UI_PORT} DB host=${WARDEN_DB_HOST_PORT} CrowdSec LAPI=${CROWDSEC_LAPI_PORT})"
+log "Port file: /etc/nginx-warden/ports.env (API=${WARDEN_API_PORT} UI=${WARDEN_UI_PORT} DB host=${WARDEN_DB_HOST_PORT} ACCESS_IP=${ACCESS_IP} CrowdSec LAPI=${CROWDSEC_LAPI_PORT})"
 
 chmod +x "${PROJECT_DIR}/scripts/"*.sh 2>/dev/null || true
 
 # Step 1: Check Prerequisites
 log "Step 1/8: Checking prerequisites..."
-log "✓ Base packages (bootstrap): openssl, curl, wget, ca-certificates, python3, git, gnupg"
-
-# Get server public IP
-if command -v curl >/dev/null 2>&1; then
-    PUBLIC_IP=$(curl -s --connect-timeout 8 --max-time 15 ifconfig.me 2>/dev/null || curl -s --connect-timeout 8 --max-time 15 icanhazip.com 2>/dev/null || curl -s --connect-timeout 8 --max-time 15 ipinfo.io/ip 2>/dev/null || echo "localhost")
-elif command -v wget >/dev/null 2>&1; then
-    PUBLIC_IP=$(wget -qO- -T 15 "https://ifconfig.me" 2>/dev/null || wget -qO- -T 15 "https://icanhazip.com" 2>/dev/null || wget -qO- -T 15 "https://ipinfo.io/ip" 2>/dev/null || echo "localhost")
-else
-    PUBLIC_IP="localhost"
-fi
-log "Detected Public IP: $PUBLIC_IP"
+log "✓ Base packages (bootstrap): openssl, curl, wget, ca-certificates, python3, git, gnupg, iproute2"
 
 # Check Node.js
 if ! command -v node &> /dev/null; then
@@ -336,8 +334,8 @@ JWT_REFRESH_SECRET="${JWT_REFRESH_SECRET}"
 JWT_ACCESS_EXPIRES_IN=60m
 JWT_REFRESH_EXPIRES_IN=7d
 
-# CORS Configuration (comma-separated origins)
-CORS_ORIGIN="http://${PUBLIC_IP}:${WARDEN_UI_PORT},http://localhost:${WARDEN_UI_PORT},http://localhost:5173,http://${PUBLIC_IP},http://localhost"
+# CORS Configuration (comma-separated origins — LAN IP first; override with WARDEN_ACCESS_IP=… ./deploy.sh)
+CORS_ORIGIN="${CORS_ORIGIN}"
 
 # Security
 BCRYPT_ROUNDS=10
@@ -368,7 +366,7 @@ log "✅ Created fresh backend .env"
 log "✓ Backend .env configured with:"
 log "  • Database: PostgreSQL (Docker) localhost:${WARDEN_DB_HOST_PORT}"
 log "  • API PORT=${WARDEN_API_PORT} UI PORT=${WARDEN_UI_PORT}"
-log "  • CORS: UI on ${WARDEN_UI_PORT}; CrowdSec LAPI install uses port ${CROWDSEC_LAPI_PORT} (see install-crowdsec.sh)"
+log "  • CORS: ${ACCESS_IP}:${WARDEN_UI_PORT} (+ localhost/127); CrowdSec LAPI ${CROWDSEC_LAPI_PORT}"
 log "  • JWT Secrets: Generated (64 chars each)"
 
 # Generate Prisma Client
@@ -420,10 +418,10 @@ log "Building frontend..."
 cd "${PROJECT_DIR}"
 pnpm --filter @nginx-warden/web build >> "${LOG_FILE}" 2>&1 || error "Failed to build frontend"
 
-# Update CSP in built index.html to use public IP
-log "Updating Content Security Policy with public IP..."
-sed -i "s|__API_URL__|http://${PUBLIC_IP}:${WARDEN_API_PORT} http://localhost:${WARDEN_API_PORT}|g" "${FRONTEND_DIR}/dist/index.html"
-sed -i "s|__WS_URL__|ws://${PUBLIC_IP}:* ws://localhost:*|g" "${FRONTEND_DIR}/dist/index.html"
+# Update CSP in built index.html (primary ACCESS_IP = LAN/private)
+log "Updating Content Security Policy with access IP: ${ACCESS_IP}..."
+sed -i "s|__API_URL__|http://${ACCESS_IP}:${WARDEN_API_PORT} http://127.0.0.1:${WARDEN_API_PORT} http://localhost:${WARDEN_API_PORT}|g" "${FRONTEND_DIR}/dist/index.html"
+sed -i "s|__WS_URL__|ws://${ACCESS_IP}:* ws://127.0.0.1:* ws://localhost:*|g" "${FRONTEND_DIR}/dist/index.html"
 
 log "✓ Frontend built successfully"
 log "✓ CSP configured for API port ${WARDEN_API_PORT}"
@@ -596,8 +594,11 @@ log "=================================="
 log ""
 log "📋 Service Status:"
 log "  • PostgreSQL: Docker container '${DB_CONTAINER_NAME}'"
-log "  • Backend API: http://${PUBLIC_IP}:${WARDEN_API_PORT}"
-log "  • Frontend UI: http://${PUBLIC_IP}:${WARDEN_UI_PORT}"
+log "  • Backend API: http://${ACCESS_IP}:${WARDEN_API_PORT}"
+log "  • Frontend UI: http://${ACCESS_IP}:${WARDEN_UI_PORT}"
+if [[ -n "${PUBLIC_IP}" && "${PUBLIC_IP}" != "${ACCESS_IP}" && "${PUBLIC_IP}" != "localhost" ]]; then
+    log "  • Also reachable via public IP: http://${PUBLIC_IP}:${WARDEN_UI_PORT} (if routed)"
+fi
 log "  • Nginx: Port 80/443"
 log ""
 log "🔐 Database Credentials:"
@@ -628,7 +629,7 @@ log "🔐 Default Credentials:"
 log "  Username: admin"
 log "  Password: admin123"
 log ""
-log "🌐 Access the portal at: http://${PUBLIC_IP}:${WARDEN_UI_PORT}"
+log "🌐 Access the portal at: http://${ACCESS_IP}:${WARDEN_UI_PORT}"
 log ""
 
 # Save credentials to file
@@ -637,8 +638,8 @@ cat > /root/.nginx-warden-credentials <<EOF
 # Generated: $(date)
 
 ## Public Access
-Frontend: http://${PUBLIC_IP}:${WARDEN_UI_PORT}
-Backend:  http://${PUBLIC_IP}:${WARDEN_API_PORT}
+Frontend: http://${ACCESS_IP}:${WARDEN_UI_PORT}
+Backend:  http://${ACCESS_IP}:${WARDEN_API_PORT}
 
 ## Database (Docker)
 Container: ${DB_CONTAINER_NAME}

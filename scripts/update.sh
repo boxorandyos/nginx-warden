@@ -114,11 +114,11 @@ fi
 # Step 1: Check prerequisites
 log "Step 1/6: Checking prerequisites..."
 
-if ! command -v curl &> /dev/null || ! command -v wget &> /dev/null || ! command -v openssl &> /dev/null || ! command -v python3 &> /dev/null || ! command -v git &> /dev/null || ! command -v gpg &> /dev/null; then
-    warn "Installing base packages: openssl, curl, wget, ca-certificates, python3, git, gnupg..."
+if ! command -v curl &> /dev/null || ! command -v wget &> /dev/null || ! command -v openssl &> /dev/null || ! command -v python3 &> /dev/null || ! command -v git &> /dev/null || ! command -v gpg &> /dev/null || ! command -v ip &> /dev/null; then
+    warn "Installing base packages: openssl, curl, wget, ca-certificates, python3, git, gnupg, iproute2..."
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -qq >> "$LOG_FILE" 2>&1 || true
-    apt-get install -y --no-install-recommends openssl curl wget ca-certificates python3 git gnupg >> "$LOG_FILE" 2>&1 || error "Failed to install base packages (apt)"
+    apt-get install -y --no-install-recommends openssl curl wget ca-certificates python3 git gnupg iproute2 >> "$LOG_FILE" 2>&1 || error "Failed to install base packages (apt)"
     log "✓ Base packages installed"
 else
     log "✓ Base packages present (openssl, curl, wget, python3, git, gnupg, ca-certificates)"
@@ -149,6 +149,11 @@ if ! command -v docker &> /dev/null; then
 fi
 
 log "✓ Prerequisites check passed"
+
+# shellcheck source=lib/warden-access-ip.sh
+source "${SCRIPT_DIR}/lib/warden-access-ip.sh"
+warden_resolve_access_ips_and_cors "${UI_PORT}"
+log "ACCESS_IP=${ACCESS_IP} (LAN first; set WARDEN_ACCESS_IP in /etc/nginx-warden/ports.env to override). If login fails, add http://${ACCESS_IP}:${UI_PORT} to CORS (Fleet → Configuration) or apps/api/.env"
 
 # Step 2: Stop services before update
 log "Step 2/6: Stopping services for update..."
@@ -233,19 +238,10 @@ log "Building frontend..."
 cd "${FRONTEND_DIR}"
 pnpm build >> "${LOG_FILE}" 2>&1 || error "Failed to build frontend"
 
-# Get public IP for CSP update (curl or wget from Step 1)
-if command -v curl >/dev/null 2>&1; then
-    PUBLIC_IP=$(curl -s --connect-timeout 8 --max-time 15 ifconfig.me 2>/dev/null || curl -s --connect-timeout 8 --max-time 15 icanhazip.com 2>/dev/null || curl -s --connect-timeout 8 --max-time 15 ipinfo.io/ip 2>/dev/null || echo "localhost")
-elif command -v wget >/dev/null 2>&1; then
-    PUBLIC_IP=$(wget -qO- -T 15 "https://ifconfig.me" 2>/dev/null || wget -qO- -T 15 "https://icanhazip.com" 2>/dev/null || wget -qO- -T 15 "https://ipinfo.io/ip" 2>/dev/null || echo "localhost")
-else
-    PUBLIC_IP="localhost"
-fi
-
-# Update CSP in built index.html to use public IP
-log "Updating Content Security Policy with public IP: ${PUBLIC_IP}..."
-sed -i "s|__API_URL__|http://${PUBLIC_IP}:${API_PORT} http://localhost:${API_PORT}|g" "${FRONTEND_DIR}/dist/index.html"
-sed -i "s|__WS_URL__|ws://${PUBLIC_IP}:* ws://localhost:*|g" "${FRONTEND_DIR}/dist/index.html"
+# CSP uses ACCESS_IP (resolved at start; LAN/private first)
+log "Updating Content Security Policy with access IP: ${ACCESS_IP}..."
+sed -i "s|__API_URL__|http://${ACCESS_IP}:${API_PORT} http://127.0.0.1:${API_PORT} http://localhost:${API_PORT}|g" "${FRONTEND_DIR}/dist/index.html"
+sed -i "s|__WS_URL__|ws://${ACCESS_IP}:* ws://127.0.0.1:* ws://localhost:*|g" "${FRONTEND_DIR}/dist/index.html"
 
 log "✓ Frontend build completed"
 
@@ -367,8 +363,8 @@ log "  • Frontend UI: Rebuilt and restarted"
 log "  • Database: Migrations applied, missing data created (existing data preserved)"
 log ""
 log "🌐 Services Status:"
-log "  • Backend API: http://${PUBLIC_IP}:${API_PORT}"
-log "  • Frontend UI: http://${PUBLIC_IP}:${UI_PORT}"
+log "  • Backend API: http://${ACCESS_IP}:${API_PORT}"
+log "  • Frontend UI: http://${ACCESS_IP}:${UI_PORT}"
 log "  • Database: Running in Docker container"
 log ""
 log "📝 Manage Services:"
@@ -382,7 +378,7 @@ log "  Frontend:   tail -f /var/log/nginx-warden-frontend.log"
 log "  Database:   docker logs -f ${DB_CONTAINER_NAME}"
 log "  Update:     tail -f ${LOG_FILE}"
 log ""
-log "🔐 Access the portal at: http://${PUBLIC_IP}:${UI_PORT}"
+log "🔐 Access the portal at: http://${ACCESS_IP}:${UI_PORT}"
 log ""
 log "Update log saved to: ${LOG_FILE}"
 log "=================================="
