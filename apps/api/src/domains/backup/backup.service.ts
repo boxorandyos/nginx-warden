@@ -7,7 +7,10 @@ import { backupRepository } from './backup.repository';
 import {
   BACKUP_CONSTANTS,
   BackupData,
+  AccessListBackupData,
   BackupMetadata,
+  DomainBackupData,
+  FirewallBackupData,
   FormattedBackupSchedule,
   FormattedBackupFile,
   ImportResults,
@@ -245,6 +248,8 @@ export class BackupService {
           sslCount: backupData.ssl.length,
           modsecRulesCount: backupData.modsec.customRules.length,
           aclRulesCount: backupData.acl.length,
+          firewallEntriesCount: backupData.firewall?.addressEntries?.length ?? 0,
+          accessListsCount: backupData.accessLists?.length ?? 0,
         },
       });
 
@@ -307,12 +312,21 @@ export class BackupService {
       nginxConfigs: 0,
       networkLoadBalancers: 0,
       nlbUpstreams: 0,
+      firewallSettings: 0,
+      firewallAddressEntries: 0,
+      accessLists: 0,
     };
+
+    /** Maps exported domain id → current DB id after upsert (for ModSecurity foreign keys). */
+    const domainIdMap = new Map<string, string>();
 
     // 1. Restore domains
     if (backupData.domains && Array.isArray(backupData.domains)) {
       for (const domainData of backupData.domains) {
-        await this.restoreDomain(domainData, results);
+        const newId = await this.restoreDomain(domainData, results);
+        if (domainData.id && newId) {
+          domainIdMap.set(domainData.id, newId);
+        }
       }
     }
 
@@ -325,7 +339,7 @@ export class BackupService {
 
     // 3. Restore ModSecurity configurations
     if (backupData.modsec) {
-      await this.restoreModSecRules(backupData.modsec, results);
+      await this.restoreModSecRules(backupData.modsec, results, domainIdMap);
     }
 
     // 4. Restore ACL rules
@@ -367,6 +381,18 @@ export class BackupService {
     if (backupData.networkLoadBalancers && Array.isArray(backupData.networkLoadBalancers)) {
       for (const nlbData of backupData.networkLoadBalancers) {
         await this.restoreNetworkLoadBalancer(nlbData, results);
+      }
+    }
+
+    // 10. Host firewall (nftables policy + address entries)
+    if (backupData.firewall) {
+      await this.restoreFirewallBackup(backupData.firewall, results);
+    }
+
+    // 11. Access lists (after domains exist; links resolved by domain name)
+    if (backupData.accessLists && Array.isArray(backupData.accessLists)) {
+      for (const al of backupData.accessLists) {
+        await this.restoreAccessListBackup(al as AccessListBackupData, results);
       }
     }
 
@@ -440,17 +466,7 @@ export class BackupService {
     const domainsWithVhostConfig = await Promise.all(
       domains.map(async (d) => {
         const vhostConfig = await this.readNginxVhostConfig(d.name);
-
-        return {
-          name: d.name,
-          status: d.status,
-          sslEnabled: d.sslEnabled,
-          modsecEnabled: d.modsecEnabled,
-          upstreams: d.upstreams,
-          loadBalancer: d.loadBalancer,
-          vhostConfig: vhostConfig?.config,
-          vhostEnabled: vhostConfig?.enabled,
-        };
+        return this.serializeDomainForBackup(d, vhostConfig?.config, vhostConfig?.enabled);
       })
     );
 
@@ -509,6 +525,49 @@ export class BackupService {
 
     // Get Network Load Balancers
     const networkLoadBalancers = await backupRepository.getAllNetworkLoadBalancers();
+
+    // Host firewall
+    const fwSettings = await backupRepository.getFirewallSettingsForBackup();
+    const fwEntries = await backupRepository.getFirewallAddressEntriesForBackup();
+    const firewall: FirewallBackupData = {
+      settings: fwSettings
+        ? {
+            id: fwSettings.id,
+            enabled: fwSettings.enabled,
+            sshPort: fwSettings.sshPort,
+            apiPort: fwSettings.apiPort,
+            uiPort: fwSettings.uiPort,
+            publicTcpPorts: fwSettings.publicTcpPorts,
+            crowdsecNftSetV4: fwSettings.crowdsecNftSetV4,
+            crowdsecNftSetV6: fwSettings.crowdsecNftSetV6,
+            updatedAt: fwSettings.updatedAt.toISOString(),
+          }
+        : null,
+      addressEntries: fwEntries.map((e) => ({
+        kind: e.kind,
+        cidr: e.cidr,
+        label: e.label,
+      })),
+    };
+
+    // Access lists (domain links stored by domain name for portable restore)
+    const accessListsRaw = await backupRepository.getAccessListsForBackup();
+    const accessLists: AccessListBackupData[] = accessListsRaw.map((al) => ({
+      name: al.name,
+      description: al.description,
+      type: al.type,
+      enabled: al.enabled,
+      allowedIps: al.allowedIps,
+      authUsers: al.authUsers.map((u) => ({
+        username: u.username,
+        passwordHash: u.passwordHash,
+        description: u.description,
+      })),
+      domainLinks: al.domains.map((link) => ({
+        domainName: link.domain.name,
+        enabled: link.enabled,
+      })),
+    }));
 
     return {
       version: BACKUP_CONSTANTS.BACKUP_VERSION,
@@ -572,6 +631,70 @@ export class BackupService {
           status: u.status,
         })),
       })),
+      firewall,
+      accessLists,
+    };
+  }
+
+  /**
+   * Export full domain row + vhost snapshot (excludes access-list relations — exported separately).
+   */
+  private serializeDomainForBackup(
+    d: any,
+    vhostConfig: string | undefined,
+    vhostEnabled: boolean | undefined
+  ): DomainBackupData {
+    return {
+      id: d.id,
+      name: d.name,
+      status: d.status,
+      sslEnabled: d.sslEnabled,
+      sslExpiry: d.sslExpiry ? d.sslExpiry.toISOString() : null,
+      modsecEnabled: d.modsecEnabled,
+      realIpEnabled: d.realIpEnabled,
+      realIpCloudflare: d.realIpCloudflare,
+      realIpCustomCidrs: d.realIpCustomCidrs,
+      hstsEnabled: d.hstsEnabled,
+      http2Enabled: d.http2Enabled,
+      grpcEnabled: d.grpcEnabled,
+      clientMaxBodySize: d.clientMaxBodySize,
+      customLocations: d.customLocations ?? undefined,
+      limitReqPerMinute: d.limitReqPerMinute,
+      limitReqBurst: d.limitReqBurst,
+      limitConnPerAddr: d.limitConnPerAddr,
+      modsecEngineMode: d.modsecEngineMode,
+      crowdsecNginxEnabled: d.crowdsecNginxEnabled,
+      crowdsecAppsecEnabled: d.crowdsecAppsecEnabled,
+      upstreams: d.upstreams as DomainBackupData['upstreams'],
+      loadBalancer: d.loadBalancer,
+      vhostConfig,
+      vhostEnabled,
+    };
+  }
+
+  /**
+   * Build Prisma domain create/update payload from backup JSON (supports pre-2.1 partial exports).
+   */
+  private domainPayloadFromBackup(domainData: any): Record<string, unknown> {
+    return {
+      status: domainData.status ?? 'inactive',
+      sslEnabled: domainData.sslEnabled ?? false,
+      sslExpiry: domainData.sslExpiry ? new Date(domainData.sslExpiry) : null,
+      modsecEnabled: domainData.modsecEnabled ?? true,
+      realIpEnabled: domainData.realIpEnabled ?? false,
+      realIpCloudflare: domainData.realIpCloudflare ?? false,
+      realIpCustomCidrs: domainData.realIpCustomCidrs ?? [],
+      hstsEnabled: domainData.hstsEnabled ?? false,
+      http2Enabled: domainData.http2Enabled ?? true,
+      grpcEnabled: domainData.grpcEnabled ?? false,
+      clientMaxBodySize: domainData.clientMaxBodySize ?? 100,
+      customLocations: domainData.customLocations ?? undefined,
+      limitReqPerMinute: domainData.limitReqPerMinute ?? 0,
+      limitReqBurst: domainData.limitReqBurst ?? 20,
+      limitConnPerAddr: domainData.limitConnPerAddr ?? 0,
+      modsecEngineMode: domainData.modsecEngineMode ?? 'On',
+      crowdsecNginxEnabled: domainData.crowdsecNginxEnabled ?? false,
+      crowdsecAppsecEnabled: domainData.crowdsecAppsecEnabled ?? false,
     };
   }
 
@@ -714,22 +837,19 @@ export class BackupService {
   }
 
   /**
-   * Restore domain from backup data
+   * Restore domain from backup data. Returns the current domain id (for ModSecurity id remapping).
    */
-  private async restoreDomain(domainData: any, results: ImportResults) {
+  private async restoreDomain(domainData: any, results: ImportResults): Promise<string | undefined> {
     try {
+      const payload = this.domainPayloadFromBackup(domainData);
       const domain = await backupRepository.upsertDomain(
         domainData.name,
         {
           name: domainData.name,
-          status: domainData.status,
-          sslEnabled: domainData.sslEnabled,
-          modsecEnabled: domainData.modsecEnabled,
+          ...(payload as any),
         },
         {
-          status: domainData.status,
-          sslEnabled: domainData.sslEnabled,
-          modsecEnabled: domainData.modsecEnabled,
+          ...(payload as any),
         }
       );
       results.domains++;
@@ -744,10 +864,10 @@ export class BackupService {
             host: upstream.host,
             port: upstream.port,
             protocol: upstream.protocol || 'http',
-            sslVerify: upstream.sslVerify ?? false,
+            sslVerify: upstream.sslVerify ?? true,
             weight: upstream.weight || 1,
             maxFails: upstream.maxFails || 3,
-            failTimeout: upstream.failTimeout || 30,
+            failTimeout: upstream.failTimeout ?? 10,
             status: upstream.status || 'up',
           });
           results.upstreams++;
@@ -785,8 +905,11 @@ export class BackupService {
           results.vhostConfigs++;
         }
       }
+
+      return domain.id;
     } catch (error) {
       logger.error(`Failed to restore domain ${domainData.name}:`, error);
+      return undefined;
     }
   }
 
@@ -846,14 +969,26 @@ export class BackupService {
   /**
    * Restore ModSec rules
    */
-  private async restoreModSecRules(modsec: any, results: ImportResults) {
+  private async restoreModSecRules(
+    modsec: any,
+    results: ImportResults,
+    domainIdMap: Map<string, string>
+  ) {
+    const mapDomainId = (id: string | null | undefined): string | null | undefined => {
+      if (id == null || id === undefined) {
+        return null;
+      }
+      return domainIdMap.get(id) ?? id;
+    };
+
     // CRS rules
     if (modsec.crsRules && Array.isArray(modsec.crsRules)) {
       for (const rule of modsec.crsRules) {
         try {
+          const resolved = mapDomainId(rule.domainId) as string | null;
           await backupRepository.upsertModSecCRSRule(
             rule.ruleFile,
-            rule.domainId || null,
+            resolved ?? null,
             {
               enabled: rule.enabled,
               name: rule.name || rule.ruleFile,
@@ -872,8 +1007,10 @@ export class BackupService {
     if (modsec.customRules && Array.isArray(modsec.customRules)) {
       for (const rule of modsec.customRules) {
         try {
+          const resolved = mapDomainId(rule.domainId);
           await backupRepository.createModSecRule({
-            domain: rule.domainId ? { connect: { id: rule.domainId } } : undefined,
+            domain:
+              resolved != null ? { connect: { id: resolved } } : undefined,
             name: rule.name,
             ruleContent: rule.content || rule.ruleContent || '',
             enabled: rule.enabled,
@@ -884,6 +1021,64 @@ export class BackupService {
           logger.error(`Failed to restore custom ModSec rule ${rule.name}:`, error);
         }
       }
+    }
+  }
+
+  /**
+   * Restore host firewall settings + address entries (replaces all address rows when present).
+   */
+  private async restoreFirewallBackup(firewall: FirewallBackupData, results: ImportResults) {
+    try {
+      if (firewall.settings && typeof firewall.settings === 'object') {
+        const s = firewall.settings as Record<string, unknown>;
+        await backupRepository.upsertFirewallSettingsFromBackup({
+          id: (s.id as string) || 'default',
+          enabled: (s.enabled as boolean) ?? false,
+          sshPort: (s.sshPort as number) ?? 22,
+          apiPort: (s.apiPort as number) ?? 3001,
+          uiPort: (s.uiPort as number) ?? 8088,
+          publicTcpPorts: Array.isArray(s.publicTcpPorts)
+            ? (s.publicTcpPorts as number[])
+            : [80, 443],
+          crowdsecNftSetV4: (s.crowdsecNftSetV4 as string) ?? 'crowdsec_blacklists',
+          crowdsecNftSetV6: (s.crowdsecNftSetV6 as string) ?? 'crowdsec6_blacklists',
+        });
+        results.firewallSettings = 1;
+      }
+
+      if (firewall.addressEntries && Array.isArray(firewall.addressEntries)) {
+        await backupRepository.deleteAllFirewallAddressEntries();
+        for (const e of firewall.addressEntries) {
+          await backupRepository.createFirewallAddressEntry({
+            kind: e.kind,
+            cidr: e.cidr,
+            label: e.label,
+          });
+          results.firewallAddressEntries++;
+        }
+      }
+    } catch (error) {
+      logger.error('Failed to restore firewall backup:', error);
+    }
+  }
+
+  /**
+   * Restore a single access list (users + domain links by domain name).
+   */
+  private async restoreAccessListBackup(al: AccessListBackupData, results: ImportResults) {
+    try {
+      await backupRepository.replaceAccessListFromBackup({
+        name: al.name,
+        description: al.description,
+        type: al.type,
+        enabled: al.enabled ?? true,
+        allowedIps: al.allowedIps ?? [],
+        authUsers: al.authUsers ?? [],
+        domainLinks: al.domainLinks ?? [],
+      });
+      results.accessLists++;
+    } catch (error) {
+      logger.error(`Failed to restore access list ${al.name}:`, error);
     }
   }
 
@@ -971,6 +1166,7 @@ export class BackupService {
           phone: userData.phone,
           timezone: userData.timezone || 'UTC',
           language: userData.language || 'en',
+          isFirstLogin: userData.isFirstLogin ?? true,
           lastLogin: userData.lastLogin ? new Date(userData.lastLogin) : null,
           profile: userData.profile
             ? {
@@ -992,6 +1188,7 @@ export class BackupService {
           phone: userData.phone,
           timezone: userData.timezone || 'UTC',
           language: userData.language || 'en',
+          isFirstLogin: userData.isFirstLogin ?? true,
           lastLogin: userData.lastLogin ? new Date(userData.lastLogin) : null,
         }
       );

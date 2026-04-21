@@ -419,6 +419,155 @@ export class BackupRepository {
       where: { nlbId },
     });
   }
+
+  /**
+   * Host firewall settings (single row)
+   */
+  async getFirewallSettingsForBackup() {
+    return prisma.firewallSettings.findFirst();
+  }
+
+  /**
+   * Firewall address entries (trusted / local deny sets)
+   */
+  async getFirewallAddressEntriesForBackup() {
+    return prisma.firewallAddressEntry.findMany({
+      orderBy: [{ kind: 'asc' }, { cidr: 'asc' }],
+    });
+  }
+
+  /**
+   * Access lists with auth users and domain links (domain name for portable restore)
+   */
+  async getAccessListsForBackup() {
+    return prisma.accessList.findMany({
+      include: {
+        authUsers: true,
+        domains: { include: { domain: true } },
+      },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  async upsertFirewallSettingsFromBackup(data: {
+    id: string;
+    enabled: boolean;
+    sshPort: number;
+    apiPort: number;
+    uiPort: number;
+    publicTcpPorts: number[];
+    crowdsecNftSetV4: string;
+    crowdsecNftSetV6: string;
+  }) {
+    const id = data.id || 'default';
+    return prisma.firewallSettings.upsert({
+      where: { id },
+      create: {
+        id,
+        enabled: data.enabled,
+        sshPort: data.sshPort,
+        apiPort: data.apiPort,
+        uiPort: data.uiPort,
+        publicTcpPorts: data.publicTcpPorts,
+        crowdsecNftSetV4: data.crowdsecNftSetV4,
+        crowdsecNftSetV6: data.crowdsecNftSetV6,
+      },
+      update: {
+        enabled: data.enabled,
+        sshPort: data.sshPort,
+        apiPort: data.apiPort,
+        uiPort: data.uiPort,
+        publicTcpPorts: data.publicTcpPorts,
+        crowdsecNftSetV4: data.crowdsecNftSetV4,
+        crowdsecNftSetV6: data.crowdsecNftSetV6,
+      },
+    });
+  }
+
+  async deleteAllFirewallAddressEntries() {
+    return prisma.firewallAddressEntry.deleteMany();
+  }
+
+  async createFirewallAddressEntry(data: {
+    kind: string;
+    cidr: string;
+    label?: string | null;
+  }) {
+    return prisma.firewallAddressEntry.create({
+      data: {
+        kind: data.kind as any,
+        cidr: data.cidr,
+        label: data.label ?? null,
+      },
+    });
+  }
+
+  /**
+   * Replace one access list's users and domain links (by domain name lookup).
+   */
+  async replaceAccessListFromBackup(data: {
+    name: string;
+    description?: string | null;
+    type: string;
+    enabled: boolean;
+    allowedIps: string[];
+    authUsers: Array<{
+      username: string;
+      passwordHash: string;
+      description?: string | null;
+    }>;
+    domainLinks: Array<{ domainName: string; enabled: boolean }>;
+  }) {
+    return prisma.$transaction(async (tx) => {
+      const list = await tx.accessList.upsert({
+        where: { name: data.name },
+        create: {
+          name: data.name,
+          description: data.description ?? null,
+          type: data.type as any,
+          enabled: data.enabled,
+          allowedIps: data.allowedIps ?? [],
+        },
+        update: {
+          description: data.description ?? null,
+          type: data.type as any,
+          enabled: data.enabled,
+          allowedIps: data.allowedIps ?? [],
+        },
+      });
+
+      await tx.accessListAuthUser.deleteMany({ where: { accessListId: list.id } });
+      for (const u of data.authUsers) {
+        await tx.accessListAuthUser.create({
+          data: {
+            accessListId: list.id,
+            username: u.username,
+            passwordHash: u.passwordHash,
+            description: u.description ?? null,
+          },
+        });
+      }
+
+      await tx.accessListDomain.deleteMany({ where: { accessListId: list.id } });
+      for (const link of data.domainLinks) {
+        const domain = await tx.domain.findUnique({
+          where: { name: link.domainName },
+        });
+        if (!domain) {
+          continue;
+        }
+        await tx.accessListDomain.create({
+          data: {
+            accessListId: list.id,
+            domainId: domain.id,
+            enabled: link.enabled ?? true,
+          },
+        });
+      }
+
+      return list;
+    });
+  }
 }
 
 // Export singleton instance

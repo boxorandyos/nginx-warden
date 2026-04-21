@@ -51,6 +51,34 @@ export interface BackupMetadata {
 /**
  * Backup data structure
  */
+/** Firewall snapshot (host nftables policy + address sets). */
+export interface FirewallBackupData {
+  settings: Record<string, unknown> | null;
+  addressEntries: Array<{
+    kind: string;
+    cidr: string;
+    label?: string | null;
+  }>;
+}
+
+/** Access list + auth users + domain assignments (by domain name). */
+export interface AccessListBackupData {
+  name: string;
+  description?: string | null;
+  type: string;
+  enabled: boolean;
+  allowedIps: string[];
+  authUsers: Array<{
+    username: string;
+    passwordHash: string;
+    description?: string | null;
+  }>;
+  domainLinks: Array<{
+    domainName: string;
+    enabled: boolean;
+  }>;
+}
+
 export interface BackupData {
   version: string;
   timestamp: string;
@@ -63,16 +91,37 @@ export interface BackupData {
   users: any[];
   nginxConfigs: any[];
   networkLoadBalancers: NetworkLoadBalancerBackupData[];
+  /** Host firewall (Phase 1). Omitted in older backups. */
+  firewall?: FirewallBackupData;
+  /** IP / basic-auth access lists. Omitted in older backups. */
+  accessLists?: AccessListBackupData[];
 }
 
 /**
- * Domain backup data
+ * Domain backup data (includes DB id for ModSecurity domainId remapping on restore).
  */
 export interface DomainBackupData {
+  /** Original domain row id — used to remap ModSecurity rules to the new id after restore. */
+  id?: string;
   name: string;
   status: string;
   sslEnabled: boolean;
+  sslExpiry?: string | null;
   modsecEnabled: boolean;
+  realIpEnabled?: boolean;
+  realIpCloudflare?: boolean;
+  realIpCustomCidrs?: string[];
+  hstsEnabled?: boolean;
+  http2Enabled?: boolean;
+  grpcEnabled?: boolean;
+  clientMaxBodySize?: number | null;
+  customLocations?: unknown;
+  limitReqPerMinute?: number;
+  limitReqBurst?: number;
+  limitConnPerAddr?: number;
+  modsecEngineMode?: string;
+  crowdsecNginxEnabled?: boolean;
+  crowdsecAppsecEnabled?: boolean;
   upstreams: any[];
   loadBalancer?: any;
   vhostConfig?: string;
@@ -140,6 +189,9 @@ export interface ImportResults {
   nginxConfigs: number;
   networkLoadBalancers: number;
   nlbUpstreams: number;
+  firewallSettings: number;
+  firewallAddressEntries: number;
+  accessLists: number;
 }
 
 /**
@@ -198,7 +250,7 @@ export const BACKUP_CONSTANTS = {
   NGINX_SITES_AVAILABLE: '/etc/nginx/sites-available',
   NGINX_SITES_ENABLED: '/etc/nginx/sites-enabled',
   SSL_CERTS_PATH: '/etc/nginx/ssl',
-  BACKUP_VERSION: '2.0',
+  BACKUP_VERSION: '2.1',
 } as const;
 
 /**
