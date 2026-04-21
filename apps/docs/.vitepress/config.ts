@@ -156,13 +156,13 @@ export default defineConfig({
 
     // Edit link configuration
     editLink: {
-      pattern: 'https://github.com/nginx-warden/nginx-warden/edit/main/apps/docs/:path',
+      pattern: 'https://github.com/boxorandyos/nginx-warden/edit/main/apps/docs/:path',
       text: 'Edit this page on GitHub'
     },
 
     // Enhanced social links
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/TinyActive/nginx-warden' },
+      { icon: 'github', link: 'https://github.com/boxorandyos/nginx-warden' },
     ],
 
     // Enhanced footer

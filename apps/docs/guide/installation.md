@@ -41,7 +41,7 @@ This method is recommended for new servers and production environments.
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/TinyActive/nginx-warden.git
+git clone https://github.com/boxorandyos/nginx-warden.git
 cd nginx-warden
 ```
 
@@ -85,7 +85,7 @@ This method is ideal for development and testing environments.
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/TinyActive/nginx-warden.git
+git clone https://github.com/boxorandyos/nginx-warden.git
 cd nginx-warden
 ```
 
@@ -159,7 +159,7 @@ docker compose version
 
 ```bash
 # Clone repository
-git clone https://github.com/TinyActive/nginx-warden.git
+git clone https://github.com/boxorandyos/nginx-warden.git
 cd nginx-warden
 
 # Install dependencies

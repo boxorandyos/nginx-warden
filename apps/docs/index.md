@@ -10,7 +10,7 @@ hero:
       link: /guide/introduction
     - theme: alt
       text: View on GitHub
-      link: https://github.com/nginx-warden/nginx-warden
+      link: https://github.com/boxorandyos/nginx-warden
 features:
   - title: 🚀 Easy Management
     details: Simplify your Nginx configuration management with an intuitive web interface
