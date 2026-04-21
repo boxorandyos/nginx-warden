@@ -147,6 +147,7 @@ sudo tail -f /var/log/nginx/error.log
 | **Port in use** | `sudo ss -tlnp` — look for listeners on 3001 (API) and 8080 (UI); stop conflicting services. |
 | **DB connection** | `apps/api/.env` `DATABASE_URL`; container `docker ps`; `pnpm prisma migrate deploy` in `apps/api`. |
 | **CORS / API from browser** | Allowed origins in Configuration + `CORS_ORIGIN`; SPA using same host:3001 with `VITE_API_URL=auto`. |
+| **git pull blocked (dirty tree)** | The UI update runs `git stash push -u` before `git pull` so local edits and untracked files do not block merges. If pull still fails (diverged branches), on the server run `git fetch` / `git status` and resolve (merge, rebase, or `git reset --hard origin/main` if you accept losing local commits). |
 | **nginx / ModSecurity** | `sudo nginx -t`; error log; ModSecurity audit paths on your install. |
 | **SSL** | Certificate paths in UI; ACME challenge reachability. |
 

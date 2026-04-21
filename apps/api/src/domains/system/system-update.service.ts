@@ -52,6 +52,9 @@ export async function runGithubUpdateAndInstallScript(): Promise<{ output: strin
   let out = '';
 
   const gitDir = path.join(root, '.git');
+  const skipStash =
+    process.env.UPDATE_GIT_NO_STASH === 'true' || process.env.UPDATE_GIT_NO_STASH === '1';
+
   if (fs.existsSync(gitDir)) {
     try {
       const fetch = await execFileAsync('git', ['fetch', remote], {
@@ -64,6 +67,28 @@ export async function runGithubUpdateAndInstallScript(): Promise<{ output: strin
       const msg = e instanceof Error ? e.message : String(e);
       logger.error('git fetch failed', e);
       throw new Error(`git fetch failed: ${msg}`);
+    }
+
+    let stashed = false;
+    if (!skipStash) {
+      try {
+        const stash = await execFileAsync(
+          'git',
+          ['stash', 'push', '-u', '-m', 'nginx-warden-pre-update'],
+          {
+            cwd: root,
+            timeout: 120_000,
+            maxBuffer: 1024 * 1024,
+          }
+        );
+        const stashMsg = `${stash.stdout || ''}${stash.stderr || ''}`;
+        out += `--- git stash push -u (save local + untracked before pull) ---\n${stashMsg}\n`;
+        stashed = !/No local changes to save/i.test(stashMsg);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        out += `--- git stash (warning) ---\n${msg}\n`;
+        logger.warn('git stash before update:', e);
+      }
     }
 
     try {
@@ -85,11 +110,28 @@ export async function runGithubUpdateAndInstallScript(): Promise<{ output: strin
         maxBuffer: 20 * 1024 * 1024,
       });
       out += `--- git pull --ff-only ${remote} ${branch} ---\n${pull.stdout || ''}${pull.stderr || ''}\n`;
+      if (stashed) {
+        out +=
+          '\n--- note ---\nPrevious local changes are in git stash (nginx-warden-pre-update). Run `git stash list` and `git stash show -p` or `git stash drop` as needed.\n';
+      }
     } catch (e) {
       const err = e as { stderr?: string; message?: string };
       logger.error('git pull failed', e);
+      let restoreHint = '';
+      if (stashed) {
+        try {
+          const pop = await execFileAsync('git', ['stash', 'pop'], {
+            cwd: root,
+            timeout: 120_000,
+            maxBuffer: 20 * 1024 * 1024,
+          });
+          restoreHint = `\nStash restored after failed pull:\n${pop.stdout || ''}${pop.stderr || ''}`;
+        } catch (popErr) {
+          restoreHint = `\nCould not auto-restore stash; run: cd ${root} && git stash pop\n${popErr instanceof Error ? popErr.message : String(popErr)}`;
+        }
+      }
       throw new Error(
-        `git pull failed (local changes or non-fast-forward?). ${err.stderr || err.message || String(e)}`
+        `git pull failed (diverged branch or remote issue?). ${err.stderr || err.message || String(e)}${restoreHint}`
       );
     }
   } else {
