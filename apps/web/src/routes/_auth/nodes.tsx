@@ -1,20 +1,18 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useQuery } from "@tanstack/react-query";
 import { Server, Link as LinkIcon } from "lucide-react";
 import { SystemConfig, SlaveNodes } from '@/components/pages/SlaveNodes'
 import { createFileRoute } from '@tanstack/react-router'
 import { systemConfigQueryOptions } from "@/queries/system-config.query-options";
-import { systemConfigService } from "@/services/system-config.service";
-import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "react-i18next";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute('/_auth/nodes')({
   component: RouteComponent,
 })
 
 function RouteComponent() {
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-  
+  const { t } = useTranslation();
+
   // Fetch system configuration
   const { data: systemConfigData, isLoading: isConfigLoading } = useQuery(systemConfigQueryOptions.all);
   const systemConfig = systemConfigData?.data;
@@ -22,33 +20,9 @@ function RouteComponent() {
   const currentMode = systemConfig?.nodeMode || 'master';
   const isMasterMode = currentMode === 'master';
 
-  // Update node mode mutation
-  const updateNodeModeMutation = useMutation({
-    mutationFn: systemConfigService.updateNodeMode,
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['system-config'] });
-      
-      toast({
-        title: "Node mode changed",
-        description: `Node is now in ${data.data.nodeMode} mode`,
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Failed to change mode",
-        description: error.response?.data?.message || "An error occurred",
-        variant: "destructive"
-      });
-    }
-  });
-
-  // Handle tab change
-  const handleTabChange = (newMode: string) => {
-    if (newMode !== currentMode) {
-      updateNodeModeMutation.mutate(newMode as 'master' | 'slave');
-    }
-  };
-
+  const modeLabel = isMasterMode
+    ? t("nodes.system.modeMaster")
+    : t("nodes.system.modeSlave");
 
   return (
     <div className="space-y-6">
@@ -59,30 +33,42 @@ function RouteComponent() {
       
       {!isConfigLoading && (
         <div className="space-y-4">
-          <Tabs value={currentMode} onValueChange={handleTabChange} className="space-y-4">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="master" className="flex items-center gap-2">
-                <Server className="h-4 w-4" />
-                Master Mode
-              </TabsTrigger>
-              <TabsTrigger value="slave" className="flex items-center gap-2">
-                <LinkIcon className="h-4 w-4" />
-                Slave Mode
-              </TabsTrigger>
-            </TabsList>
+          <div
+            className="grid w-full grid-cols-2 gap-0 rounded-lg border bg-muted/40 p-1 text-center text-sm"
+            role="status"
+            aria-label={t("nodes.modeViewAria", { mode: modeLabel })}
+          >
+            <div
+              className={cn(
+                "flex items-center justify-center gap-2 rounded-md py-2 font-medium transition-colors",
+                isMasterMode
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground"
+              )}
+            >
+              <Server className="h-4 w-4 shrink-0" aria-hidden />
+              {t("nodes.modeSegment.master")}
+            </div>
+            <div
+              className={cn(
+                "flex items-center justify-center gap-2 rounded-md py-2 font-medium transition-colors",
+                !isMasterMode
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground"
+              )}
+            >
+              <LinkIcon className="h-4 w-4 shrink-0" aria-hidden />
+              {t("nodes.modeSegment.slave")}
+            </div>
+          </div>
 
-            {/* MASTER MODE TAB */}
-            <TabsContent value="master" className="space-y-4">
-              <SlaveNodes systemConfig={systemConfig} />
-            </TabsContent>
-
-            {/* SLAVE MODE TAB */}
-            <TabsContent value="slave" className="space-y-4">
-              <div className="text-center py-8 text-muted-foreground">
-                Switch to Slave Mode to manage slave node connections.
-              </div>
-            </TabsContent>
-          </Tabs>
+          {isMasterMode ? (
+            <SlaveNodes systemConfig={systemConfig} />
+          ) : (
+            <div className="text-center py-8 text-muted-foreground text-sm max-w-lg mx-auto">
+              {t("nodes.slaveSectionPlaceholder")}
+            </div>
+          )}
         </div>
       )}
     </div>

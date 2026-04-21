@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../../middleware/auth';
 import logger from '../../utils/logger';
 import { SystemConfigService } from './system-config.service';
+import { listHostNetworkInterfaceNames } from './network-interfaces.service';
 import { readSystemUpdateLogTail, runGithubUpdateAndInstallScript } from './system-update.service';
 import { ResponseUtil } from '../../shared/utils/response.util';
 import { ValidationError, NotFoundError } from '../../shared/errors/app-error';
@@ -80,6 +81,19 @@ export const getSystemUpdateLog = async (req: AuthRequest, res: Response): Promi
     logger.error('Read system update log error:', error);
     const message = error instanceof Error ? error.message : 'Failed to read update log';
     ResponseUtil.error(res, message, 500);
+  }
+};
+
+/**
+ * List host network interface names (for Keepalived / VRRP) — admin only.
+ */
+export const getNetworkInterfaces = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const interfaces = await listHostNetworkInterfaceNames();
+    ResponseUtil.success(res, { interfaces });
+  } catch (error: unknown) {
+    logger.error('Get network interfaces error:', error);
+    ResponseUtil.error(res, 'Failed to list network interfaces', 500);
   }
 };
 

@@ -26,6 +26,14 @@ export const systemConfigService = {
   /**
    * VRRP / Keepalived virtual IP (HA). Master node only.
    */
+  /**
+   * Host network interface names (Linux /sys) — admin, for VRRP interface picker.
+   */
+  getNetworkInterfaces: async (): Promise<ApiResponse<{ interfaces: string[] }>> => {
+    const response = await api.get('/system-config/network-interfaces');
+    return response.data;
+  },
+
   updateKeepalived: async (body: {
     keepalivedEnabled: boolean;
     keepalivedVirtualIp?: string | null;

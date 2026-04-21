@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,13 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Server, Link as LinkIcon, CheckCircle2, AlertCircle, Loader2, RefreshCw, XCircle, Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { systemConfigService } from "@/services/system-config.service";
@@ -244,6 +251,21 @@ const SystemConfig = ({ systemConfig, isLoading }: SystemConfigProps) => {
   const isMasterMode = currentMode === 'master';
   const isSlaveMode = currentMode === 'slave';
 
+  const {
+    data: hostIfaces,
+    isLoading: hostIfacesLoading,
+    isError: hostIfacesError,
+  } = useQuery({
+    queryKey: ['system-network-interfaces'],
+    queryFn: async () => {
+      const r = await systemConfigService.getNetworkInterfaces();
+      return r.data?.interfaces ?? [];
+    },
+    enabled: isMasterMode && !isLoading,
+    staleTime: 30_000,
+  });
+  const ifaces: string[] = Array.isArray(hostIfaces) ? hostIfaces : [];
+
   const fmt = (d: string | Date) => new Date(d).toLocaleString(i18n.language);
 
   return (
@@ -355,15 +377,51 @@ const SystemConfig = ({ systemConfig, isLoading }: SystemConfigProps) => {
                     className="font-mono"
                   />
                 </div>
-                <div className="grid gap-2">
+                <div className="grid gap-2 sm:col-span-2">
                   <Label htmlFor="kiface">{t("nodes.system.keepalivedIface")}</Label>
+                  {hostIfacesLoading && <Skeleton className="h-9 w-full" />}
+                  {hostIfacesError && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                      {t("nodes.system.keepalivedIfaceListError")}
+                    </p>
+                  )}
+                  {!hostIfacesLoading && !hostIfacesError && ifaces.length === 0 && (
+                    <p className="text-xs text-muted-foreground">{t("nodes.system.keepalivedIfaceEmpty")}</p>
+                  )}
+                  {!hostIfacesLoading && ifaces.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">{t("nodes.system.keepalivedIfacePickerHint")}</p>
+                      <Select
+                        value={
+                          ifaces.includes(kaForm.keepalivedVrrpInterface?.trim() ?? "")
+                            ? (kaForm.keepalivedVrrpInterface?.trim() ?? "")
+                            : undefined
+                        }
+                        onValueChange={(v) =>
+                          setKaForm((f) => ({ ...f, keepalivedVrrpInterface: v }))
+                        }
+                      >
+                        <SelectTrigger id="kiface-select" className="w-full max-w-md font-mono" size="default">
+                          <SelectValue placeholder={t("nodes.system.keepalivedIfacePicker")} />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-64">
+                          {ifaces.map((name) => (
+                            <SelectItem key={name} value={name} className="font-mono">
+                              {name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                   <Input
                     id="kiface"
                     value={kaForm.keepalivedVrrpInterface}
                     onChange={(e) => setKaForm((f) => ({ ...f, keepalivedVrrpInterface: e.target.value }))}
-                    placeholder="eth0"
-                    className="font-mono"
+                    placeholder="eth0 / ens18"
+                    className="font-mono max-w-md"
                   />
+                  <p className="text-xs text-muted-foreground">{t("nodes.system.keepalivedIfaceHelp")}</p>
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="kvrid">{t("nodes.system.keepalivedVrid")}</Label>
