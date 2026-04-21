@@ -42,7 +42,8 @@ export default function Configuration() {
     setText(origins.join('\n'));
   }, [config?.portalAccessOrigins]);
 
-  const UPDATE_LOG_POLL_MS = 5000;
+  /** Poll log on an interval while this page is open (admin) so the tail updates without clicking Refresh */
+  const UPDATE_LOG_INTERVAL_MS = 3500;
   const UPDATE_LOG_POLL_MAX_MS = 45 * 60 * 1000;
 
   const {
@@ -61,8 +62,9 @@ export default function Configuration() {
       return res.data;
     },
     enabled: isAdmin,
-    staleTime: 15_000,
-    refetchInterval: pollUpdateLog ? UPDATE_LOG_POLL_MS : false,
+    staleTime: 0,
+    refetchInterval: isAdmin ? UPDATE_LOG_INTERVAL_MS : false,
+    refetchIntervalInBackground: false,
     retry: false,
   });
 
@@ -267,23 +269,23 @@ export default function Configuration() {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <Label>{t('configuration.systemUpdate.outputLabel')}</Label>
                 <div className="flex items-center gap-2">
-                  {pollUpdateLog && (
-                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      {t('configuration.systemUpdate.logPolling')}
-                    </span>
-                  )}
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                    {pollUpdateLog ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        {t('configuration.systemUpdate.logPolling')}
+                      </>
+                    ) : (
+                      t('configuration.systemUpdate.logLive')
+                    )}
+                  </span>
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
                     className="h-7 text-xs"
-                    disabled={isUpdateLogFetching}
                     onClick={() => refetchUpdateLog()}
                   >
-                    {isUpdateLogFetching ? (
-                      <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                    ) : null}
                     {t('configuration.systemUpdate.logRefresh')}
                   </Button>
                 </div>
