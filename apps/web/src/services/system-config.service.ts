@@ -28,9 +28,11 @@ export const systemConfigService = {
     return response.data;
   },
 
-  /** git pull + scripts/update.sh (admin, can take many minutes) */
-  runSystemUpdate: async (): Promise<ApiResponse<{ output: string }>> => {
-    const response = await api.post('/system-config/system-update', {}, { timeout: 900_000 });
+  /** Schedules git pull + scripts/update.sh in a detached process (response returns immediately) */
+  runSystemUpdate: async (): Promise<
+    ApiResponse<{ output: string; scheduled: boolean; logFile: string }>
+  > => {
+    const response = await api.post('/system-config/system-update', {}, { timeout: 120_000 });
     return response.data;
   },
 

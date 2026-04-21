@@ -75,7 +75,11 @@ export default function Configuration() {
     onSuccess: (res) => {
       if (res.success && res.data?.output) {
         setUpdateOutput(res.data.output);
-        toast.success(t('configuration.systemUpdate.toast.success'));
+        toast.success(
+          res.data.scheduled
+            ? t('configuration.systemUpdate.toast.scheduled')
+            : t('configuration.systemUpdate.toast.success')
+        );
       } else {
         toast.error(res.message || t('configuration.systemUpdate.toast.failed'));
       }

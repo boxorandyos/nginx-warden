@@ -1,12 +1,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { spawn } from 'node:child_process';
 import logger from '../../utils/logger';
 
-const execFileAsync = promisify(execFile);
+/** Same path as scripts/update.sh (LOG_FILE) — shown in API response */
+export const NGINX_WARDEN_UI_UPDATE_LOG = '/var/log/nginx-warden-ui-update.log';
 
-const MAX_OUTPUT_CHARS = 120_000;
+export type SystemUpdateResult = {
+  output: string;
+  scheduled: boolean;
+  logFile: string;
+};
 
 /**
  * Resolve monorepo root (parent of apps/api). Override with NGINX_WARDEN_ROOT on the API host.
@@ -19,27 +23,31 @@ export function resolveProjectRoot(): string {
   return path.resolve(process.cwd(), '..', '..');
 }
 
-function truncateOutput(s: string): string {
-  if (s.length <= MAX_OUTPUT_CHARS) return s;
-  return `…(truncated, showing last ${MAX_OUTPUT_CHARS} chars)\n${s.slice(-MAX_OUTPUT_CHARS)}`;
-}
-
 /**
- * git fetch / pull from GitHub (or configured remote), then run scripts/update.sh as root.
- * Requires: API process running as root (same as deploy), valid git repo optional, ENABLE_WEB_SYSTEM_UPDATE not false.
+ * Schedule git pull + scripts/update.sh in a detached process.
+ *
+ * The UI must not run update.sh synchronously: update.sh calls `systemctl stop nginx-warden-backend`,
+ * which would stop the same Node process that is waiting on the shell child — deadlock and stop timeout.
  */
-export async function runGithubUpdateAndInstallScript(): Promise<{ output: string }> {
+export async function runGithubUpdateAndInstallScript(): Promise<SystemUpdateResult> {
   const disabled = process.env.ENABLE_WEB_SYSTEM_UPDATE === 'false' || process.env.ENABLE_WEB_SYSTEM_UPDATE === '0';
   if (disabled) {
     throw new Error('Web-based system update is disabled. Set ENABLE_WEB_SYSTEM_UPDATE=true in the API .env.');
   }
 
   const root = resolveProjectRoot();
+  const wrapperScript = path.join(root, 'scripts', 'apply-update-from-remote.sh');
   const updateScript = path.join(root, 'scripts', 'update.sh');
 
   if (!fs.existsSync(updateScript) || !fs.statSync(updateScript).isFile()) {
     throw new Error(
       `Update script not found at ${updateScript}. Set NGINX_WARDEN_ROOT to your Nginx Warden install directory.`
+    );
+  }
+
+  if (!fs.existsSync(wrapperScript) || !fs.statSync(wrapperScript).isFile()) {
+    throw new Error(
+      `apply-update-from-remote.sh not found at ${wrapperScript}. Ensure the repo is complete.`
     );
   }
 
@@ -49,113 +57,35 @@ export async function runGithubUpdateAndInstallScript(): Promise<{ output: strin
     throw new Error('Invalid UPDATE_GIT_BRANCH or UPDATE_GIT_REMOTE');
   }
 
-  let out = '';
+  const child = spawn('bash', [wrapperScript], {
+    detached: true,
+    stdio: 'ignore',
+    cwd: root,
+    env: process.env,
+  });
 
-  const gitDir = path.join(root, '.git');
-  const skipStash =
-    process.env.UPDATE_GIT_NO_STASH === 'true' || process.env.UPDATE_GIT_NO_STASH === '1';
+  child.on('error', (err: Error) => {
+    logger.error('Failed to spawn apply-update-from-remote.sh', err);
+  });
 
-  if (fs.existsSync(gitDir)) {
-    try {
-      const fetch = await execFileAsync('git', ['fetch', remote], {
-        cwd: root,
-        timeout: 300_000,
-        maxBuffer: 20 * 1024 * 1024,
-      });
-      out += `--- git fetch ${remote} ---\n${fetch.stdout || ''}${fetch.stderr || ''}\n`;
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      logger.error('git fetch failed', e);
-      throw new Error(`git fetch failed: ${msg}`);
-    }
+  child.unref();
 
-    let stashed = false;
-    if (!skipStash) {
-      try {
-        const stash = await execFileAsync(
-          'git',
-          ['stash', 'push', '-u', '-m', 'nginx-warden-pre-update'],
-          {
-            cwd: root,
-            timeout: 120_000,
-            maxBuffer: 1024 * 1024,
-          }
-        );
-        const stashMsg = `${stash.stdout || ''}${stash.stderr || ''}`;
-        out += `--- git stash push -u (save local + untracked before pull) ---\n${stashMsg}\n`;
-        stashed = !/No local changes to save/i.test(stashMsg);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        out += `--- git stash (warning) ---\n${msg}\n`;
-        logger.warn('git stash before update:', e);
-      }
-    }
-
-    try {
-      const co = await execFileAsync('git', ['checkout', branch], {
-        cwd: root,
-        timeout: 120_000,
-        maxBuffer: 1024 * 1024,
-      });
-      out += `--- git checkout ${branch} ---\n${co.stdout || ''}${co.stderr || ''}\n`;
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      out += `--- git checkout ${branch} (warning) ---\n${msg}\n`;
-    }
-
-    try {
-      const pull = await execFileAsync('git', ['pull', '--ff-only', remote, branch], {
-        cwd: root,
-        timeout: 300_000,
-        maxBuffer: 20 * 1024 * 1024,
-      });
-      out += `--- git pull --ff-only ${remote} ${branch} ---\n${pull.stdout || ''}${pull.stderr || ''}\n`;
-      if (stashed) {
-        out +=
-          '\n--- note ---\nPrevious local changes are in git stash (nginx-warden-pre-update). Run `git stash list` and `git stash show -p` or `git stash drop` as needed.\n';
-      }
-    } catch (e) {
-      const err = e as { stderr?: string; message?: string };
-      logger.error('git pull failed', e);
-      let restoreHint = '';
-      if (stashed) {
-        try {
-          const pop = await execFileAsync('git', ['stash', 'pop'], {
-            cwd: root,
-            timeout: 120_000,
-            maxBuffer: 20 * 1024 * 1024,
-          });
-          restoreHint = `\nStash restored after failed pull:\n${pop.stdout || ''}${pop.stderr || ''}`;
-        } catch (popErr) {
-          restoreHint = `\nCould not auto-restore stash; run: cd ${root} && git stash pop\n${popErr instanceof Error ? popErr.message : String(popErr)}`;
-        }
-      }
-      throw new Error(
-        `git pull failed (diverged branch or remote issue?). ${err.stderr || err.message || String(e)}${restoreHint}`
-      );
-    }
-  } else {
-    out += '--- git: no .git directory; skipping clone/pull. Run update.sh only.\n';
+  if (child.pid === undefined) {
+    throw new Error('Could not start background update process');
   }
 
-  try {
-    const run = await execFileAsync('bash', [updateScript], {
-      cwd: root,
-      timeout: 900_000,
-      maxBuffer: 50 * 1024 * 1024,
-    });
-    out += '\n--- scripts/update.sh ---\n';
-    out += `${run.stdout || ''}${run.stderr || ''}`;
-  } catch (e) {
-    const err = e as { stdout?: string; stderr?: string; message?: string };
-    out += '\n--- scripts/update.sh (failed) ---\n';
-    out += `${err.stdout || ''}${err.stderr || ''}`;
-    logger.error('update.sh failed', e);
-    throw new Error(
-      `update.sh failed: ${err.stderr || err.message || String(e)}\n\n${truncateOutput(out)}`
-    );
-  }
+  const output = [
+    'Update scheduled in the background (detached from the API process).',
+    `Progress is written to: ${NGINX_WARDEN_UI_UPDATE_LOG}`,
+    'On the server: sudo tail -f ' + NGINX_WARDEN_UI_UPDATE_LOG,
+    'Services will stop and restart during the run; refresh the portal after a few minutes.',
+  ].join('\n');
 
-  logger.info('System update from UI completed');
-  return { output: truncateOutput(out) };
+  logger.info('System update scheduled in background', { pid: child.pid, root });
+
+  return {
+    output,
+    scheduled: true,
+    logFile: NGINX_WARDEN_UI_UPDATE_LOG,
+  };
 }

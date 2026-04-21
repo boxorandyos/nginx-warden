@@ -55,9 +55,13 @@ export const restartFrontend = async (req: AuthRequest, res: Response): Promise<
  */
 export const runSystemUpdate = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { output } = await runGithubUpdateAndInstallScript();
-    logger.info('System update from UI completed', { userId: req.user?.userId });
-    ResponseUtil.success(res, { output }, 'System update finished');
+    const result = await runGithubUpdateAndInstallScript();
+    logger.info('System update from UI', {
+      userId: req.user?.userId,
+      scheduled: result.scheduled,
+      logFile: result.logFile,
+    });
+    ResponseUtil.success(res, result, 'System update scheduled');
   } catch (error: unknown) {
     logger.error('System update error:', error);
     const message = error instanceof Error ? error.message : 'System update failed';
