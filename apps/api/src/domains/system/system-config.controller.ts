@@ -2,10 +2,68 @@ import { Response } from 'express';
 import { AuthRequest } from '../../middleware/auth';
 import logger from '../../utils/logger';
 import { SystemConfigService } from './system-config.service';
+import { runGithubUpdateAndInstallScript } from './system-update.service';
 import { ResponseUtil } from '../../shared/utils/response.util';
 import { ValidationError, NotFoundError } from '../../shared/errors/app-error';
 
 const systemConfigService = new SystemConfigService();
+
+/**
+ * Update allowed portal origins (admin only) — drives API CORS and Vite allowedHosts file.
+ */
+export const updatePortalAccessOrigins = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { portalAccessOrigins } = req.body as { portalAccessOrigins?: unknown };
+    const config = await systemConfigService.updatePortalAccessOrigins(portalAccessOrigins);
+
+    logger.info('Portal access origins updated', {
+      userId: req.user?.userId,
+      count: config.portalAccessOrigins?.length ?? 0,
+    });
+
+    ResponseUtil.success(res, config, 'Portal access configuration updated');
+  } catch (error: unknown) {
+    logger.error('Update portal access origins error:', error);
+
+    if (error instanceof ValidationError) {
+      ResponseUtil.error(res, error.message, 400);
+      return;
+    }
+
+    ResponseUtil.error(res, 'Failed to update portal access configuration', 500);
+  }
+};
+
+/**
+ * Restart frontend systemd unit (admin only).
+ */
+export const restartFrontend = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    await systemConfigService.restartFrontendService();
+    logger.info('Frontend service restarted via API', { userId: req.user?.userId });
+    ResponseUtil.success(res, { ok: true }, 'Frontend service restarted');
+  } catch (error: unknown) {
+    logger.error('Restart frontend error:', error);
+    const message =
+      error instanceof Error ? error.message : 'Failed to restart frontend service';
+    ResponseUtil.error(res, message, 500);
+  }
+};
+
+/**
+ * Pull latest from git (origin + branch) and run scripts/update.sh — admin only, long-running.
+ */
+export const runSystemUpdate = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { output } = await runGithubUpdateAndInstallScript();
+    logger.info('System update from UI completed', { userId: req.user?.userId });
+    ResponseUtil.success(res, { output }, 'System update finished');
+  } catch (error: unknown) {
+    logger.error('System update error:', error);
+    const message = error instanceof Error ? error.message : 'System update failed';
+    ResponseUtil.error(res, message, 500);
+  }
+};
 
 /**
  * Get system configuration

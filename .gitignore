@@ -52,3 +52,6 @@ landing/*
 .pnpm-store/
 .seeded
 /docs/*
+
+# Written by API when saving Fleet → Configuration (portal allowed hosts for Vite)
+apps/web/portal-allowed-hosts.json

@@ -13,6 +13,7 @@ import {
   Users,
   Server,
   LayoutTemplate,
+  Settings,
 } from 'lucide-react';
 
 /** Distinct section-based IA (not sidebar-style “groups”) */
@@ -67,6 +68,7 @@ export const appNavSections: NavSection[] = [
       { path: '/backup', navKey: 'nav.backup', icon: Database },
       { path: '/users', navKey: 'nav.users', icon: Users },
       { path: '/nodes', navKey: 'nav.nodes', icon: Server },
+      { path: '/configuration', navKey: 'nav.configuration', icon: Settings },
     ],
   },
 ];

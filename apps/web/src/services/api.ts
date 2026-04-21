@@ -1,8 +1,13 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { tokenStorage } from '@/lib/auth-storage';
+import { resolveApiBaseUrl } from '@/lib/resolve-api-base-url';
 
-// API Base URL
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+/** Backend `/api` base; same hostname as the page + port (see resolve-api-base-url), unless VITE_API_USE_FIXED. */
+const API_BASE_URL = resolveApiBaseUrl();
+
+export function getApiBaseUrl(): string {
+  return API_BASE_URL;
+}
 
 // Create axios instance
 const api: AxiosInstance = axios.create({

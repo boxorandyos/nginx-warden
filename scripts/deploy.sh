@@ -320,12 +320,13 @@ cd "${FRONTEND_DIR}"
 # Create frontend .env from .env.example (always create fresh)
 log "Creating fresh frontend .env from .env.example..."
 cat > ".env" <<EOF
-VITE_API_URL=http://${PUBLIC_IP}:3001/api
+# auto = same hostname as the browser + port 3001 (works for private IP, DNS, public IP)
+VITE_API_URL=auto
 EOF
 
 log "✅ Created fresh frontend .env"
 
-log "✓ Frontend .env configured with API: http://${PUBLIC_IP}:3001/api"
+log "✓ Frontend .env: VITE_API_URL=auto (API calls use same host as UI on port 3001)"
 
 # Clean previous build
 if [ -d "dist" ]; then

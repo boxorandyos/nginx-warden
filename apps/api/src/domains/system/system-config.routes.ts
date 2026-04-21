@@ -1,8 +1,11 @@
 import { Router } from 'express';
-import { authenticate } from '../../middleware/auth';
+import { authenticate, authorize } from '../../middleware/auth';
 import {
   getSystemConfig,
   updateNodeMode,
+  updatePortalAccessOrigins,
+  restartFrontend,
+  runSystemUpdate,
   connectToMaster,
   disconnectFromMaster,
   testMasterConnection,
@@ -17,6 +20,9 @@ router.use(authenticate);
 // System configuration routes
 router.get('/', getSystemConfig);
 router.put('/node-mode', updateNodeMode);
+router.put('/portal-access', authorize('admin'), updatePortalAccessOrigins);
+router.post('/restart-frontend', authorize('admin'), restartFrontend);
+router.post('/system-update', authorize('admin'), runSystemUpdate);
 
 // Slave mode routes
 router.post('/connect-master', connectToMaster);

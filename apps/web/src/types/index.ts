@@ -339,6 +339,9 @@ export interface SystemConfig {
   connected: boolean;
   lastConnectedAt?: string | null;
   connectionError?: string | null;
+
+  /** Full origins for opening the admin UI (CORS + Vite hosts file) */
+  portalAccessOrigins?: string[];
   
   createdAt: string;
   updatedAt: string;

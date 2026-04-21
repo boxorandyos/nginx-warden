@@ -4,6 +4,8 @@ dotenv.config();
 
 export const config = {
   port: parseInt(process.env.PORT || '3001', 10),
+  /** Bind address for HTTP server. Use 0.0.0.0 to accept LAN/private IPs (default). Set 127.0.0.1 to loopback-only. */
+  host: process.env.HOST || '0.0.0.0',
   nodeEnv: process.env.NODE_ENV || 'development',
   
   database: {

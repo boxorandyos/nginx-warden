@@ -73,6 +73,7 @@ export interface SystemConfig {
   connected: boolean;
   lastConnectedAt: Date | null;
   connectionError: string | null;
+  portalAccessOrigins: string[];
   createdAt: Date;
   updatedAt: Date;
 }

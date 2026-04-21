@@ -69,7 +69,7 @@ fi
 # Step 1: Check prerequisites
 log "Step 1/6: Checking prerequisites..."
 
-if ! comannd -v htpasswd &> /dev/null; then
+if ! command -v htpasswd &> /dev/null; then
     warn "htpasswd not found. Installing apache2-utils..."
     apt-get install -y apache2-utils >> "$LOG_FILE" 2>&1 || error "Failed to install apache2-utils"
     log "✓ htpasswd installed successfully"
@@ -157,6 +157,15 @@ log "✓ Backend build completed"
 log "Step 4/6: Building frontend..."
 
 cd "${FRONTEND_DIR}"
+
+# Avoid baking a single public IP into the JS bundle; runtime resolves API host from the browser URL.
+# Opt out with VITE_API_USE_FIXED=true and VITE_API_URL=… for a separate API origin.
+if [ -f ".env" ] && ! grep -q "^VITE_API_USE_FIXED=true" ".env" 2>/dev/null; then
+  if grep -q "^VITE_API_URL=" ".env"; then
+    sed -i 's|^VITE_API_URL=.*|VITE_API_URL=auto|' ".env"
+  fi
+  log "✓ Frontend .env: VITE_API_URL=auto (API uses same hostname as the page unless VITE_API_USE_FIXED=true)"
+fi
 
 # Clean previous build
 if [ -d "dist" ]; then

@@ -7,6 +7,7 @@ import { config } from './config';
 import routes from './routes';
 import { errorHandler, notFound } from './middleware/errorHandler';
 import logger from './utils/logger';
+import { getMergedCorsOrigins, loadPortalCorsFromDatabase } from './domains/system/portal-access-sync.service';
 import { initializeNginxForSSL } from './utils/nginx-setup';
 import { modSecSetupService } from './domains/modsec/services/modsec-setup.service';
 import { startAlertMonitoring, stopAlertMonitoring } from './domains/alerts/services/alert-monitoring.service';
@@ -15,6 +16,7 @@ import { backupSchedulerService } from './domains/backup/services/backup-schedul
 import { sslSchedulerService } from './domains/ssl/services/ssl-scheduler.service';
 
 const app: Application = express();
+let server: ReturnType<Application['listen']> | null = null;
 let monitoringTimer: NodeJS.Timeout | null = null;
 let slaveStatusTimer: NodeJS.Timeout | null = null;
 let backupSchedulerTimer: NodeJS.Timeout | null = null;
@@ -23,9 +25,20 @@ let sslSchedulerTimer: NodeJS.Timeout | null = null;
 // Security middleware
 // app.use(helmet());
 
-// CORS
+// CORS — env origins plus portal access URLs from database (see Configuration page)
 app.use(cors({
-  origin: config.cors.origin,
+  origin: (requestOrigin, callback) => {
+    const allowList = getMergedCorsOrigins();
+    if (!requestOrigin) {
+      callback(null, true);
+      return;
+    }
+    if (allowList.includes(requestOrigin)) {
+      callback(null, requestOrigin);
+      return;
+    }
+    callback(null, false);
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
   credentials: true,
@@ -63,9 +76,14 @@ modSecSetupService.initializeModSecurityConfig().catch((error) => {
   logger.warn('CRS rule management features may not work properly.');
 });
 
-const server = app.listen(PORT, async () => {
-  logger.info(`🚀 Server running on port ${PORT} in ${config.nodeEnv} mode`);
-  logger.info(`📡 CORS enabled for: ${config.cors.origin}`);
+async function startServer(): Promise<void> {
+  await loadPortalCorsFromDatabase();
+
+  server = app.listen(PORT, config.host, async () => {
+    logger.info(
+      `🚀 Server listening on http://${config.host}:${PORT} (${config.nodeEnv})`
+    );
+    logger.info(`📡 CORS allow list: ${getMergedCorsOrigins().join(', ')}`);
   
   // Start alert monitoring service (global scan every 10 seconds)
   // Each rule has its own checkInterval for when to actually check
@@ -90,6 +108,12 @@ const server = app.listen(PORT, async () => {
   } catch (error) {
     logger.error('Failed to start SSL auto-renew scheduler:', error);
   }
+  });
+}
+
+startServer().catch((err) => {
+  logger.error('Failed to start server:', err);
+  process.exit(1);
 });
 
 // Graceful shutdown
@@ -107,7 +131,7 @@ process.on('SIGTERM', () => {
   if (sslSchedulerTimer) {
     sslSchedulerService.stop(sslSchedulerTimer);
   }
-  server.close(() => {
+  server?.close(() => {
     logger.info('HTTP server closed');
     process.exit(0);
   });
@@ -127,7 +151,7 @@ process.on('SIGINT', () => {
   if (sslSchedulerTimer) {
     sslSchedulerService.stop(sslSchedulerTimer);
   }
-  server.close(() => {
+  server?.close(() => {
     logger.info('HTTP server closed');
     process.exit(0);
   });

@@ -83,8 +83,7 @@ if [ ! -f "${FRONTEND_DIR}/.env" ]; then
     echo "⚠️  Frontend .env not found. Creating from .env.example..."
     cp "${FRONTEND_DIR}/.env.example" "${FRONTEND_DIR}/.env"
 
-    # Replace with actual values
-    sed -i.bak "s|VITE_API_URL=.*|VITE_API_URL=http://localhost:3001/api|g" "${FRONTEND_DIR}/.env"
+    # Replace with actual values (.env.example uses VITE_API_URL=auto — same host as browser, port 3001)
     sed -i.bak "s|VITE_DEMO_MODE=.*|VITE_DEMO_MODE=true|g" "${FRONTEND_DIR}/.env"
     rm -f "${FRONTEND_DIR}/.env.bak"
 

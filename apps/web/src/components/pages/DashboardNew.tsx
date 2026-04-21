@@ -269,11 +269,17 @@ function QuickNav() {
       <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">{t("dashboard.quickNav")}</p>
       <div className="flex flex-wrap gap-2">
         {links.map(({ to, label, icon: Icon }) => (
-          <Button key={to} variant="outline" size="sm" className="h-9 rounded-none border-foreground/15 text-xs font-medium" asChild>
+          <Button
+            key={to}
+            variant="outline"
+            size="sm"
+            className="h-9 rounded-none border-foreground/15 bg-background text-foreground text-xs font-medium shadow-xs hover:text-accent-foreground [&_svg]:opacity-100"
+            asChild
+          >
             <Link to={to}>
-              <Icon className="mr-1.5 h-3.5 w-3.5 opacity-80" />
+              <Icon className="mr-1.5 h-3.5 w-3.5 text-foreground/80" />
               {t(label)}
-              <ArrowRight className="ml-1 h-3 w-3 opacity-40" />
+              <ArrowRight className="ml-1 h-3 w-3 text-muted-foreground" />
             </Link>
           </Button>
         ))}

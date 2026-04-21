@@ -21,8 +21,9 @@ import { Route as AuthNetworkRouteImport } from './routes/_auth/network'
 import { Route as AuthModsecurityRouteImport } from './routes/_auth/modsecurity'
 import { Route as AuthLogsRouteImport } from './routes/_auth/logs'
 import { Route as AuthDomainsRouteImport } from './routes/_auth/domains'
-import { Route as AuthDashboardRouteImport } from './routes/_auth/dashboard'
 import { Route as AuthDefaultServerRouteImport } from './routes/_auth/default-server'
+import { Route as AuthDashboardRouteImport } from './routes/_auth/dashboard'
+import { Route as AuthConfigurationRouteImport } from './routes/_auth/configuration'
 import { Route as AuthBackupRouteImport } from './routes/_auth/backup'
 import { Route as AuthAlertsRouteImport } from './routes/_auth/alerts'
 import { Route as AuthAclRouteImport } from './routes/_auth/acl'
@@ -88,14 +89,19 @@ const AuthDomainsRoute = AuthDomainsRouteImport.update({
   path: '/domains',
   getParentRoute: () => AuthRoute,
 } as any)
+const AuthDefaultServerRoute = AuthDefaultServerRouteImport.update({
+  id: '/default-server',
+  path: '/default-server',
+  getParentRoute: () => AuthRoute,
+} as any)
 const AuthDashboardRoute = AuthDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
   getParentRoute: () => AuthRoute,
 } as any)
-const AuthDefaultServerRoute = AuthDefaultServerRouteImport.update({
-  id: '/default-server',
-  path: '/default-server',
+const AuthConfigurationRoute = AuthConfigurationRouteImport.update({
+  id: '/configuration',
+  path: '/configuration',
   getParentRoute: () => AuthRoute,
 } as any)
 const AuthBackupRoute = AuthBackupRouteImport.update({
@@ -126,12 +132,14 @@ const AuthAccessListsRoute = AuthAccessListsRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/$catchall': typeof CatchallRoute
+  '/': typeof AuthIndexRoute
   '/login': typeof LoginRoute
   '/access-lists': typeof AuthAccessListsRoute
   '/account': typeof AuthAccountRoute
   '/acl': typeof AuthAclRoute
   '/alerts': typeof AuthAlertsRoute
   '/backup': typeof AuthBackupRoute
+  '/configuration': typeof AuthConfigurationRoute
   '/dashboard': typeof AuthDashboardRoute
   '/default-server': typeof AuthDefaultServerRoute
   '/domains': typeof AuthDomainsRoute
@@ -142,7 +150,6 @@ export interface FileRoutesByFullPath {
   '/performance': typeof AuthPerformanceRoute
   '/ssl': typeof AuthSslRoute
   '/users': typeof AuthUsersRoute
-  '/': typeof AuthIndexRoute
 }
 export interface FileRoutesByTo {
   '/$catchall': typeof CatchallRoute
@@ -152,6 +159,7 @@ export interface FileRoutesByTo {
   '/acl': typeof AuthAclRoute
   '/alerts': typeof AuthAlertsRoute
   '/backup': typeof AuthBackupRoute
+  '/configuration': typeof AuthConfigurationRoute
   '/dashboard': typeof AuthDashboardRoute
   '/default-server': typeof AuthDefaultServerRoute
   '/domains': typeof AuthDomainsRoute
@@ -174,6 +182,7 @@ export interface FileRoutesById {
   '/_auth/acl': typeof AuthAclRoute
   '/_auth/alerts': typeof AuthAlertsRoute
   '/_auth/backup': typeof AuthBackupRoute
+  '/_auth/configuration': typeof AuthConfigurationRoute
   '/_auth/dashboard': typeof AuthDashboardRoute
   '/_auth/default-server': typeof AuthDefaultServerRoute
   '/_auth/domains': typeof AuthDomainsRoute
@@ -190,12 +199,14 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/$catchall'
+    | '/'
     | '/login'
     | '/access-lists'
     | '/account'
     | '/acl'
     | '/alerts'
     | '/backup'
+    | '/configuration'
     | '/dashboard'
     | '/default-server'
     | '/domains'
@@ -206,7 +217,6 @@ export interface FileRouteTypes {
     | '/performance'
     | '/ssl'
     | '/users'
-    | '/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/$catchall'
@@ -216,6 +226,7 @@ export interface FileRouteTypes {
     | '/acl'
     | '/alerts'
     | '/backup'
+    | '/configuration'
     | '/dashboard'
     | '/default-server'
     | '/domains'
@@ -237,6 +248,7 @@ export interface FileRouteTypes {
     | '/_auth/acl'
     | '/_auth/alerts'
     | '/_auth/backup'
+    | '/_auth/configuration'
     | '/_auth/dashboard'
     | '/_auth/default-server'
     | '/_auth/domains'
@@ -268,7 +280,7 @@ declare module '@tanstack/react-router' {
     '/_auth': {
       id: '/_auth'
       path: ''
-      fullPath: ''
+      fullPath: '/'
       preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
@@ -342,6 +354,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthDomainsRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_auth/default-server': {
+      id: '/_auth/default-server'
+      path: '/default-server'
+      fullPath: '/default-server'
+      preLoaderRoute: typeof AuthDefaultServerRouteImport
+      parentRoute: typeof AuthRoute
+    }
     '/_auth/dashboard': {
       id: '/_auth/dashboard'
       path: '/dashboard'
@@ -349,11 +368,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthDashboardRouteImport
       parentRoute: typeof AuthRoute
     }
-    '/_auth/default-server': {
-      id: '/_auth/default-server'
-      path: '/default-server'
-      fullPath: '/default-server'
-      preLoaderRoute: typeof AuthDefaultServerRouteImport
+    '/_auth/configuration': {
+      id: '/_auth/configuration'
+      path: '/configuration'
+      fullPath: '/configuration'
+      preLoaderRoute: typeof AuthConfigurationRouteImport
       parentRoute: typeof AuthRoute
     }
     '/_auth/backup': {
@@ -400,6 +419,7 @@ interface AuthRouteChildren {
   AuthAclRoute: typeof AuthAclRoute
   AuthAlertsRoute: typeof AuthAlertsRoute
   AuthBackupRoute: typeof AuthBackupRoute
+  AuthConfigurationRoute: typeof AuthConfigurationRoute
   AuthDashboardRoute: typeof AuthDashboardRoute
   AuthDefaultServerRoute: typeof AuthDefaultServerRoute
   AuthDomainsRoute: typeof AuthDomainsRoute
@@ -419,6 +439,7 @@ const AuthRouteChildren: AuthRouteChildren = {
   AuthAclRoute: AuthAclRoute,
   AuthAlertsRoute: AuthAlertsRoute,
   AuthBackupRoute: AuthBackupRoute,
+  AuthConfigurationRoute: AuthConfigurationRoute,
   AuthDashboardRoute: AuthDashboardRoute,
   AuthDefaultServerRoute: AuthDefaultServerRoute,
   AuthDomainsRoute: AuthDomainsRoute,

@@ -18,6 +18,22 @@ export const systemConfigService = {
     return response.data;
   },
 
+  updatePortalAccess: async (portalAccessOrigins: string[]): Promise<ApiResponse<SystemConfig>> => {
+    const response = await api.put('/system-config/portal-access', { portalAccessOrigins });
+    return response.data;
+  },
+
+  restartFrontend: async (): Promise<ApiResponse<{ ok: boolean }>> => {
+    const response = await api.post('/system-config/restart-frontend');
+    return response.data;
+  },
+
+  /** git pull + scripts/update.sh (admin, can take many minutes) */
+  runSystemUpdate: async (): Promise<ApiResponse<{ output: string }>> => {
+    const response = await api.post('/system-config/system-update', {}, { timeout: 900_000 });
+    return response.data;
+  },
+
   /**
    * Connect to master node (for slave mode)
    */

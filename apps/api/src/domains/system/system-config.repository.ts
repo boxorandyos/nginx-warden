@@ -163,4 +163,15 @@ export class SystemConfigRepository {
 
     return config as SystemConfig | null;
   }
+
+  async updatePortalAccessOrigins(
+    configId: string,
+    portalAccessOrigins: string[]
+  ): Promise<SystemConfig> {
+    const config = await prisma.systemConfig.update({
+      where: { id: configId },
+      data: { portalAccessOrigins },
+    });
+    return config as SystemConfig;
+  }
 }

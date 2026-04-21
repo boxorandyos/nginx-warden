@@ -1,8 +1,16 @@
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import axios from 'axios';
 import logger from '../../utils/logger';
 import { SystemConfigRepository } from './system-config.repository';
 import { SystemConfig, NodeMode } from './system.types';
 import { ValidationError, NotFoundError } from '../../shared/errors/app-error';
+import {
+  setPortalAccessOriginsCache,
+  writePortalHostsFile,
+} from './portal-access-sync.service';
+
+const execAsync = promisify(exec);
 
 /**
  * System Config service - Handles all system configuration business logic
@@ -19,6 +27,72 @@ export class SystemConfigService {
    */
   async getSystemConfig(): Promise<SystemConfig> {
     return this.repository.getSystemConfig();
+  }
+
+  /**
+   * Portal UI base URLs (CORS + Vite allowedHosts). Each value must be a valid http(s) origin (e.g. http://10.0.0.1:8080).
+   */
+  async updatePortalAccessOrigins(rawOrigins: unknown): Promise<SystemConfig> {
+    if (!Array.isArray(rawOrigins)) {
+      throw new ValidationError('portalAccessOrigins must be an array of URL strings');
+    }
+    const normalized = [
+      ...new Set(
+        rawOrigins
+          .filter((x): x is string => typeof x === 'string')
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0)
+      ),
+    ];
+
+    for (const o of normalized) {
+      let u: URL;
+      try {
+        u = new URL(o);
+      } catch {
+        throw new ValidationError(`Invalid URL: ${o}`);
+      }
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+        throw new ValidationError(`URL must use http or https: ${o}`);
+      }
+    }
+
+    const config = await this.repository.getSystemConfig();
+    const updated = await this.repository.updatePortalAccessOrigins(config.id, normalized);
+    setPortalAccessOriginsCache(normalized);
+    try {
+      writePortalHostsFile(normalized);
+    } catch (e) {
+      logger.warn(
+        'Could not write portal-allowed-hosts.json for Vite; check PORTAL_ALLOWED_HOSTS_FILE or filesystem permissions.',
+        e
+      );
+    }
+    return updated;
+  }
+
+  /**
+   * Restart the systemd unit that serves the admin UI (e.g. Vite preview). Requires permission to run systemctl (typically API runs as root).
+   * Override unit with FRONTEND_SYSTEMD_UNIT (default: nginx-warden-frontend).
+   */
+  async restartFrontendService(): Promise<void> {
+    const raw = process.env.FRONTEND_SYSTEMD_UNIT || 'nginx-warden-frontend';
+    const unit = raw.replace(/\.service$/i, '');
+    if (!/^[a-zA-Z0-9_.@-]+$/.test(unit)) {
+      throw new ValidationError('Invalid FRONTEND_SYSTEMD_UNIT');
+    }
+    try {
+      await execAsync(`systemctl restart ${unit}`, {
+        timeout: 120_000,
+        maxBuffer: 1024 * 1024,
+      });
+      logger.info(`systemctl restart ${unit} completed`);
+    } catch (e: unknown) {
+      const err = e as { stderr?: string; stdout?: string; message?: string };
+      const detail = [err.stderr, err.stdout].filter(Boolean).join('\n').trim() || err.message;
+      logger.error(`systemctl restart ${unit} failed`, e);
+      throw new Error(detail || 'systemctl restart failed');
+    }
   }
 
   /**

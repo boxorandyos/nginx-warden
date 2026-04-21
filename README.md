@@ -87,7 +87,8 @@ Before running the application, you need to set up your environment variables:
       | `JWT_ACCESS_SECRET` | Secret key for JWT access tokens | `your-random-secret-key-32-chars` | ✅ Yes |
       | `JWT_REFRESH_SECRET` | Secret key for JWT refresh tokens | `your-random-secret-key-32-chars` | ✅ Yes |
       | `SESSION_SECRET` | Secret key for session management | `your-random-secret-key-32-chars` | ✅ Yes |
-      | `VITE_API_URL` | Backend API URL for frontend | `http://YOUR_SERVER_IP:3001/api` | ✅ Yes |
+      | `VITE_API_URL` | Baked into build; use `auto` — the SPA resolves API host from the browser URL at runtime | `auto` | ✅ Yes |
+      | `VITE_API_USE_FIXED` | Set `true` only if the API is on another host; then set `VITE_API_URL` to that API origin | `false` | ⚠️ Optional |
       | `DB_NAME` | PostgreSQL database name | `nginx_warden_db` | ✅ Yes |
       | `DB_USER` | PostgreSQL database user | `postgres` | ✅ Yes |
       | `DB_PASSWORD` | PostgreSQL database password | `postgres` | ✅ Yes |
@@ -367,6 +368,10 @@ sudo systemctl status nginx
 sudo nginx -t  # Test configuration
 sudo nginx -s reload  # Reload configuration
 ```
+
+### In-app update (Fleet → Configuration)
+
+Admins can **Download & update** to run `git fetch` / `git pull --ff-only` from `UPDATE_GIT_REMOTE` (default `origin`) and `UPDATE_GIT_BRANCH` (default `main`), then execute `scripts/update.sh`. The backend must run as **root** (same as manual updates). If the repo lives outside the default path, set **`NGINX_WARDEN_ROOT`** on the API. Set **`ENABLE_WEB_SYSTEM_UPDATE=false`** to hide this action. The HTTP call can take many minutes; ensure proxies do not time out early.
 
 ### Development Environment
 
