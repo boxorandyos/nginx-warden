@@ -114,6 +114,16 @@ fi
 # Step 1: Check prerequisites
 log "Step 1/6: Checking prerequisites..."
 
+if ! command -v curl &> /dev/null || ! command -v wget &> /dev/null || ! command -v openssl &> /dev/null || ! command -v python3 &> /dev/null || ! command -v git &> /dev/null || ! command -v gpg &> /dev/null; then
+    warn "Installing base packages: openssl, curl, wget, ca-certificates, python3, git, gnupg..."
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -qq >> "$LOG_FILE" 2>&1 || true
+    apt-get install -y --no-install-recommends openssl curl wget ca-certificates python3 git gnupg >> "$LOG_FILE" 2>&1 || error "Failed to install base packages (apt)"
+    log "✓ Base packages installed"
+else
+    log "✓ Base packages present (openssl, curl, wget, python3, git, gnupg, ca-certificates)"
+fi
+
 if ! command -v htpasswd &> /dev/null; then
     warn "htpasswd not found. Installing apache2-utils..."
     apt-get install -y apache2-utils >> "$LOG_FILE" 2>&1 || error "Failed to install apache2-utils"
@@ -223,8 +233,14 @@ log "Building frontend..."
 cd "${FRONTEND_DIR}"
 pnpm build >> "${LOG_FILE}" 2>&1 || error "Failed to build frontend"
 
-# Get public IP for CSP update
-PUBLIC_IP=$(curl -s ifconfig.me || curl -s icanhazip.com || curl -s ipinfo.io/ip || echo "localhost")
+# Get public IP for CSP update (curl or wget from Step 1)
+if command -v curl >/dev/null 2>&1; then
+    PUBLIC_IP=$(curl -s --connect-timeout 8 --max-time 15 ifconfig.me 2>/dev/null || curl -s --connect-timeout 8 --max-time 15 icanhazip.com 2>/dev/null || curl -s --connect-timeout 8 --max-time 15 ipinfo.io/ip 2>/dev/null || echo "localhost")
+elif command -v wget >/dev/null 2>&1; then
+    PUBLIC_IP=$(wget -qO- -T 15 "https://ifconfig.me" 2>/dev/null || wget -qO- -T 15 "https://icanhazip.com" 2>/dev/null || wget -qO- -T 15 "https://ipinfo.io/ip" 2>/dev/null || echo "localhost")
+else
+    PUBLIC_IP="localhost"
+fi
 
 # Update CSP in built index.html to use public IP
 log "Updating Content Security Policy with public IP: ${PUBLIC_IP}..."
@@ -310,7 +326,7 @@ sleep 5
 # Backend health check
 BACKEND_HEALTHY=false
 for i in {1..10}; do
-    if curl -s "http://localhost:${API_PORT}/api/health" | grep -q "success"; then
+    if curl -fsS --connect-timeout 5 --max-time 15 "http://localhost:${API_PORT}/api/health" | grep -q "success"; then
         BACKEND_HEALTHY=true
         break
     fi
@@ -326,7 +342,7 @@ fi
 # Frontend health check
 FRONTEND_HEALTHY=false
 for i in {1..5}; do
-    if curl -s "http://localhost:${UI_PORT}" | grep -q "<!doctype html"; then
+    if curl -fsS --connect-timeout 5 --max-time 15 "http://localhost:${UI_PORT}" | grep -q "<!doctype html"; then
         FRONTEND_HEALTHY=true
         break
     fi

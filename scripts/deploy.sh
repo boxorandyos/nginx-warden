@@ -31,14 +31,10 @@ export WARDEN_UI_PORT="${WARDEN_UI_PORT:-8088}"
 export WARDEN_DB_HOST_PORT="${WARDEN_DB_HOST_PORT:-15432}"
 export CROWDSEC_LAPI_PORT="${CROWDSEC_LAPI_PORT:-9091}"
 
-# Database configuration
+# Database configuration (secrets generated after apt bootstrap — requires openssl)
 DB_CONTAINER_NAME="nginx-warden-postgres"
 DB_NAME="nginx_warden_db"
 DB_USER="nginx_warden_user"
-DB_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
-JWT_ACCESS_SECRET=$(openssl rand -base64 64 | tr -d "=+/" | cut -c1-64)
-JWT_REFRESH_SECRET=$(openssl rand -base64 64 | tr -d "=+/" | cut -c1-64)
-SESSION_SECRET=$(openssl rand -base64 64 | tr -d "=+/" | cut -c1-64)
 
 # Logging
 log() {
@@ -58,10 +54,56 @@ info() {
     echo -e "${BLUE}[INFO]${NC} $1" | tee -a "$LOG_FILE"
 }
 
+# HTTPS fetch (curl preferred; wget fallback — minimal images often lack curl until apt runs)
+warden_http_get() {
+    local url="$1"
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL --connect-timeout 10 --max-time 60 "$url" 2>/dev/null || return 1
+    elif command -v wget >/dev/null 2>&1; then
+        wget -qO- -T 60 "$url" 2>/dev/null || return 1
+    else
+        return 1
+    fi
+}
+
+warden_download_to_file() {
+    local url="$1" dest="$2"
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL "$url" -o "$dest" || return 1
+    elif command -v wget >/dev/null 2>&1; then
+        wget -qO "$dest" "$url" || return 1
+    else
+        return 1
+    fi
+}
+
 # Check root
 if [[ "${EUID}" -ne 0 ]]; then
    error "This script must be run as root (use sudo)"
 fi
+
+# Minimal apt bootstrap: tools used by this script and CrowdSec helpers (python3, git for UI updates / keys)
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq >> "$LOG_FILE" 2>&1 || true
+apt-get install -y --no-install-recommends \
+  openssl \
+  curl \
+  wget \
+  ca-certificates \
+  python3 \
+  git \
+  gnupg \
+  >> "$LOG_FILE" 2>&1 || error "Failed to install base packages (apt: openssl curl wget ca-certificates python3 git gnupg)"
+
+if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+    error "Neither curl nor wget is available after apt install — check apt/network."
+fi
+hash -r 2>/dev/null || true
+
+DB_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
+JWT_ACCESS_SECRET=$(openssl rand -base64 64 | tr -d "=+/" | cut -c1-64)
+JWT_REFRESH_SECRET=$(openssl rand -base64 64 | tr -d "=+/" | cut -c1-64)
+SESSION_SECRET=$(openssl rand -base64 64 | tr -d "=+/" | cut -c1-64)
 
 log "=================================="
 log "Nginx Warden Deployment Started"
@@ -82,24 +124,31 @@ log "Port file: /etc/nginx-warden/ports.env (API=${WARDEN_API_PORT} UI=${WARDEN_
 
 chmod +x "${PROJECT_DIR}/scripts/"*.sh 2>/dev/null || true
 
-# Get server public IP
-PUBLIC_IP=$(curl -s ifconfig.me || curl -s icanhazip.com || curl -s ipinfo.io/ip || echo "localhost")
-log "Detected Public IP: $PUBLIC_IP"
-
 # Step 1: Check Prerequisites
 log "Step 1/8: Checking prerequisites..."
+log "✓ Base packages (bootstrap): openssl, curl, wget, ca-certificates, python3, git, gnupg"
+
+# Get server public IP
+if command -v curl >/dev/null 2>&1; then
+    PUBLIC_IP=$(curl -s --connect-timeout 8 --max-time 15 ifconfig.me 2>/dev/null || curl -s --connect-timeout 8 --max-time 15 icanhazip.com 2>/dev/null || curl -s --connect-timeout 8 --max-time 15 ipinfo.io/ip 2>/dev/null || echo "localhost")
+elif command -v wget >/dev/null 2>&1; then
+    PUBLIC_IP=$(wget -qO- -T 15 "https://ifconfig.me" 2>/dev/null || wget -qO- -T 15 "https://icanhazip.com" 2>/dev/null || wget -qO- -T 15 "https://ipinfo.io/ip" 2>/dev/null || echo "localhost")
+else
+    PUBLIC_IP="localhost"
+fi
+log "Detected Public IP: $PUBLIC_IP"
 
 # Check Node.js
 if ! command -v node &> /dev/null; then
     warn "Node.js not found. Installing Node.js 20.x..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - >> "$LOG_FILE" 2>&1 || error "Failed to download Node.js setup script"
+    warden_http_get "https://deb.nodesource.com/setup_20.x" | bash - >> "$LOG_FILE" 2>&1 || error "Failed to download Node.js setup script"
     apt-get install -y nodejs >> "$LOG_FILE" 2>&1 || error "Failed to install Node.js"
     log "✓ Node.js $(node -v) installed successfully"
 else
     NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
     if [ "${NODE_VERSION}" -lt 18 ]; then
         warn "Node.js version too old ($(node -v)). Upgrading to 20.x..."
-        curl -fsSL https://deb.nodesource.com/setup_20.x | bash - >> "$LOG_FILE" 2>&1
+        warden_http_get "https://deb.nodesource.com/setup_20.x" | bash - >> "$LOG_FILE" 2>&1
         apt-get install -y nodejs >> "$LOG_FILE" 2>&1 || error "Failed to upgrade Node.js"
         log "✓ Node.js upgraded to $(node -v)"
     else
@@ -144,7 +193,7 @@ fi
 # Check Docker
 if ! command -v docker &> /dev/null; then
     warn "Docker not found. Installing latest Docker..."
-    curl -fsSL https://get.docker.com -o /tmp/install-docker.sh >> "$LOG_FILE" 2>&1 || error "Failed to download Docker installer"
+    warden_download_to_file "https://get.docker.com" /tmp/install-docker.sh >> "$LOG_FILE" 2>&1 || error "Failed to download Docker installer (need curl or wget + CA certs)"
     sh /tmp/install-docker.sh >> "$LOG_FILE" 2>&1 || error "Failed to install Docker"
     rm -f /tmp/install-docker.sh
     
@@ -162,7 +211,7 @@ if ! command -v docker-compose &> /dev/null; then
     warn "Docker Compose not found. Installing latest version..."
     
     # Get latest docker compose released tag
-    COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep 'tag_name' | cut -d\" -f4)
+    COMPOSE_VERSION=$(warden_http_get "https://api.github.com/repos/docker/compose/releases/latest" | grep 'tag_name' | cut -d\" -f4)
     
     if [ -z "$COMPOSE_VERSION" ]; then
         warn "Failed to get latest version, using v2.24.0"
@@ -170,14 +219,14 @@ if ! command -v docker-compose &> /dev/null; then
     fi
     
     # Install docker-compose
-    curl -L "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" \
-        -o /usr/local/bin/docker-compose >> "$LOG_FILE" 2>&1 || error "Failed to download Docker Compose"
+    warden_download_to_file "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" \
+        /usr/local/bin/docker-compose >> "$LOG_FILE" 2>&1 || error "Failed to download Docker Compose"
     
     chmod +x /usr/local/bin/docker-compose
     
     # Install bash completion
-    curl -L "https://raw.githubusercontent.com/docker/compose/${COMPOSE_VERSION}/contrib/completion/bash/docker-compose" \
-        -o /etc/bash_completion.d/docker-compose 2>/dev/null || true
+    warden_download_to_file "https://raw.githubusercontent.com/docker/compose/${COMPOSE_VERSION}/contrib/completion/bash/docker-compose" \
+        /etc/bash_completion.d/docker-compose 2>/dev/null || true
     
     log "✓ Docker Compose $(docker-compose -v | cut -d' ' -f4 | tr -d ',') installed successfully"
 else
@@ -636,13 +685,13 @@ fi
 
 # Health check
 sleep 3
-if curl -s "http://localhost:${WARDEN_API_PORT}/api/health" | grep -q "success"; then
+if curl -fsS --connect-timeout 5 --max-time 15 "http://localhost:${WARDEN_API_PORT}/api/health" | grep -q "success"; then
     log "✅ Backend health check: PASSED"
 else
     warn "⚠️  Backend health check: FAILED (may need a moment to start)"
 fi
 
-if curl -s "http://localhost:${WARDEN_UI_PORT}" | grep -q "<!doctype html"; then
+if curl -fsS --connect-timeout 5 --max-time 15 "http://localhost:${WARDEN_UI_PORT}" | grep -q "<!doctype html"; then
     log "✅ Frontend health check: PASSED"
 else
     warn "⚠️  Frontend health check: FAILED (may need a moment to start)"
