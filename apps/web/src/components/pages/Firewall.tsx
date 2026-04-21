@@ -298,7 +298,7 @@ export default function Firewall() {
                   <Label>{t('firewall.uiPort')}</Label>
                   <Input
                     type="number"
-                    value={settings?.uiPort ?? 8080}
+                    value={settings?.uiPort ?? 8088}
                     onChange={(e) => {
                       const n = parseInt(e.target.value, 10);
                       queryClient.setQueryData(['firewall', 'state'], (old: typeof data) =>

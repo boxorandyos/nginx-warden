@@ -7,7 +7,7 @@ CREATE TABLE "firewall_settings" (
     "enabled" BOOLEAN NOT NULL DEFAULT false,
     "sshPort" INTEGER NOT NULL DEFAULT 22,
     "apiPort" INTEGER NOT NULL DEFAULT 3001,
-    "uiPort" INTEGER NOT NULL DEFAULT 8080,
+    "uiPort" INTEGER NOT NULL DEFAULT 8088,
     "publicTcpPorts" INTEGER[] DEFAULT ARRAY[80, 443]::INTEGER[],
     "crowdsecNftSetV4" TEXT NOT NULL DEFAULT 'crowdsec_blacklists',
     "crowdsecNftSetV6" TEXT NOT NULL DEFAULT 'crowdsec6_blacklists',

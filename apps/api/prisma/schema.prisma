@@ -694,7 +694,7 @@ model SystemConfig {
   lastConnectedAt DateTime?
   connectionError String?
 
-  /// Browser origins used to open the admin UI (e.g. http://10.0.0.5:8080, https://portal.example.com). Drives API CORS and Vite preview allowed hosts.
+  /// Browser origins used to open the admin UI (e.g. http://10.0.0.5:8088, https://portal.example.com). Drives API CORS and Vite preview allowed hosts.
   portalAccessOrigins String[] @default([])
 
   createdAt DateTime @default(now())
@@ -864,7 +864,7 @@ model FirewallSettings {
 
   sshPort  Int @default(22)
   apiPort  Int @default(3001)
-  uiPort   Int @default(8080)
+  uiPort   Int @default(8088)
   /// Public TCP ports open to the world (after CrowdSec/local deny checks), e.g. 80, 443
   publicTcpPorts Int[] @default([80, 443])
 

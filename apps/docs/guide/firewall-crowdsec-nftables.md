@@ -44,9 +44,9 @@ These must remain reachable according to **your** policy (typically from **trust
 | **22** | SSH — allow only from **trusted** sets (or management VPN), never globally open unless explicitly intended |
 | **80 / 443** | Public HTTP(S) as required by your sites |
 | **3001** | Nginx Warden API (often restricted to trusted nets) |
-| **8080** | Admin UI (Vite preview) — often restricted to trusted nets |
+| **8088** | Admin UI (Vite preview) — often restricted to trusted nets |
 | **5432** | PostgreSQL — usually **localhost only** |
-| **CrowdSec LAPI** | Default often `127.0.0.1:8080` for CrowdSec’s API—**do not confuse** with the Warden API port; document both |
+| **9091** | CrowdSec’s API **localhost only** |
 
 **Rule-order caveat:** Evaluate **trusted** sources **before** CrowdSec blacklist drops unless product policy explicitly allows bans to override trust (usually **trusted wins** for admin paths).
 

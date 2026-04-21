@@ -6,7 +6,7 @@ This guide will help you get up and running with the Nginx Warden quickly. We'll
 
 Before you begin, ensure you have:
 - Completed the [installation](/guide/installation) process
-- Access to the web interface (http://localhost:8080 or http://YOUR_IP:8080)
+- Access to the web interface (http://localhost:8088 or http://YOUR_IP:8088)
 - Default login credentials (admin/admin123)
 
 ## Step 1: First Login
@@ -14,8 +14,8 @@ Before you begin, ensure you have:
 ### Access the Login Page
 
 Open your web browser and navigate to the Nginx Warden web UI:
-- **Development**: http://localhost:8080
-- **Production**: http://YOUR_IP:8080
+- **Development**: http://localhost:8088
+- **Production**: http://YOUR_IP:8088
 
 You'll see the login screen:
 
@@ -73,7 +73,7 @@ The dashboard provides:
 
 **Upstream Configuration:**
 - **Host**: IP address or hostname of your backend server
-- **Port**: Port number (e.g., 80, 8080, 3000)
+- **Port**: Port number (e.g., 80, 8088, 3000)
 - **Protocol**: HTTP or HTTPS
 - **Weight**: Load balancing weight (default: 1)
 - **Max Fails**: Maximum failed attempts before marking as down (default: 3)
@@ -84,7 +84,7 @@ The dashboard provides:
 Domain Name: api.example.com
 Upstream Server 1:
   Host: 192.168.1.100
-  Port: 8080
+  Port: 8088
   Protocol: HTTP
   Weight: 1
   Max Fails: 3

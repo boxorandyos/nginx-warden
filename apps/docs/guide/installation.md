@@ -71,7 +71,7 @@ After installation, credentials are saved at:
 ### 4. Verify Installation
 
 Once completed, you can access:
-- **Frontend**: http://YOUR_IP:8080
+- **Frontend**: http://YOUR_IP:8088
 - **Backend API**: http://YOUR_IP:3001
 - **API Documentation**: http://YOUR_IP:3001/api-docs
 - **Health Check**: http://YOUR_IP:3001/api/health
@@ -100,7 +100,7 @@ This will:
 - Start PostgreSQL in Docker (optional)
 - Run database migrations and seeding
 - Start backend on http://localhost:3001
-- Start frontend on http://localhost:8080 (dev mode)
+- Start frontend on http://localhost:8088 (dev mode)
 
 ### 3. Stop Services
 
@@ -259,7 +259,7 @@ sudo ufw allow 22/tcp      # SSH
 sudo ufw allow 80/tcp      # HTTP
 sudo ufw allow 443/tcp     # HTTPS
 sudo ufw allow 3001/tcp    # Backend API (if needed)
-sudo ufw allow 8080/tcp    # Frontend (if not behind proxy)
+sudo ufw allow 8088/tcp    # Frontend (if not behind proxy)
 sudo ufw enable
 ```
 
@@ -321,7 +321,7 @@ Ctrl+C  # In each terminal
 
 # Or force kill processes
 npx kill-port 3001    # Backend port
-npx kill-port 8080    # Frontend port (dev & prod)
+npx kill-port 8088    # Frontend port (dev & prod)
 npx kill-port 5555    # Prisma Studio port
 ```
 
@@ -349,8 +349,8 @@ Expected response:
 ### 2. Access the Web Interface
 
 Open your browser and navigate to:
-- Development: http://localhost:8080
-- Production: http://YOUR_IP:8080
+- Development: http://localhost:8088
+- Production: http://YOUR_IP:8088
 
 
 
@@ -360,7 +360,7 @@ Open your browser and navigate to:
 
 If you encounter issues during installation:
 
-1. **Port Conflicts**: Check if ports 3001, 8080, or 5432 are already in use
+1. **Port Conflicts**: Check if ports 3001, 8088, or 5432 are already in use
 2. **Permission Issues**: Ensure you have proper sudo/root privileges
 3. **Database Connection**: Verify PostgreSQL is running and credentials are correct
 4. **Node.js Version**: Ensure you're using Node.js 18.x or higher

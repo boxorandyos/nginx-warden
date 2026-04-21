@@ -14,7 +14,7 @@ export class FirewallRepository {
         enabled: false,
         sshPort: 22,
         apiPort: 3001,
-        uiPort: 8080,
+        uiPort: 8088,
         publicTcpPorts: [80, 443],
         crowdsecNftSetV4: 'crowdsec_blacklists',
         crowdsecNftSetV6: 'crowdsec6_blacklists',

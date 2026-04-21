@@ -71,7 +71,7 @@ if [ ! -f "${BACKEND_DIR}/.env" ]; then
 
     # Replace with actual values
     sed -i.bak "s|DATABASE_URL=.*|DATABASE_URL=\"${DATABASE_URL}\"|g" "${BACKEND_DIR}/.env"
-    sed -i.bak "s|CORS_ORIGIN=.*|CORS_ORIGIN=\"http://localhost:8080,http://localhost:5173\"|g" "${BACKEND_DIR}/.env"
+    sed -i.bak "s|CORS_ORIGIN=.*|CORS_ORIGIN=\"http://localhost:8088,http://localhost:5173\"|g" "${BACKEND_DIR}/.env"
     sed -i.bak "s|NODE_ENV=.*|NODE_ENV=development|g" "${BACKEND_DIR}/.env"
     rm -f "${BACKEND_DIR}/.env.bak"
 
@@ -116,7 +116,7 @@ BACKEND_PGID=$(ps -o pgid= -p "${BACKEND_PID}" | tr -d ' ')
 # Start frontend in background
 cd "${FRONTEND_DIR}" && pnpm dev > /tmp/frontend.log 2>&1 &
 FRONTEND_PID=$!
-echo "✅ Frontend started (PID: ${FRONTEND_PID}) - http://localhost:8080"
+echo "✅ Frontend started (PID: ${FRONTEND_PID}) - http://localhost:8088"
 
 # Store the process group ID for better signal handling
 FRONTEND_PGID=$(ps -o pgid= -p "${FRONTEND_PID}" | tr -d ' ')
@@ -127,7 +127,7 @@ echo "✨ Quick Start Completed!"
 echo "================================"
 echo ""
 echo "🌐 Access:"
-echo "   Frontend: http://localhost:8080"
+echo "   Frontend: http://localhost:8088"
 echo "   Backend:  http://localhost:3001"
 echo ""
 echo "🔐 Login:"
@@ -187,8 +187,8 @@ cleanup() {
         echo "✅ Backend on port 3001 stopped"
     fi
 
-    echo "🔍 Stopping frontend on port 8080..."
-    FRONTEND_PORT_PIDS=$(lsof -ti:8080 2>/dev/null)
+    echo "🔍 Stopping frontend on port 8088..."
+    FRONTEND_PORT_PIDS=$(lsof -ti:8088 2>/dev/null)
     if [ -n "${FRONTEND_PORT_PIDS}" ]; then
         for pid in ${FRONTEND_PORT_PIDS}; do
             kill -TERM "${pid}" 2>/dev/null
@@ -197,7 +197,7 @@ cleanup() {
                 kill -KILL "${pid}" 2>/dev/null
             fi
         done
-        echo "✅ Frontend on port 8080 stopped"
+        echo "✅ Frontend on port 8088 stopped"
     fi
 
     # Method 2: Kill process groups (as backup)
@@ -239,11 +239,11 @@ cleanup() {
     # Final verification
     sleep 1
     REMAINING_BACKEND=$(lsof -ti:3001 2>/dev/null)
-    REMAINING_FRONTEND=$(lsof -ti:8080 2>/dev/null)
+    REMAINING_FRONTEND=$(lsof -ti:8088 2>/dev/null)
     if [ -n "${REMAINING_BACKEND}" ] || [ -n "${REMAINING_FRONTEND}" ]; then
         echo "⚠️  Warning: Some processes still running:"
         [ -n "${REMAINING_BACKEND}" ] && echo "   Backend on port 3001: ${REMAINING_BACKEND}"
-        [ -n "${REMAINING_FRONTEND}" ] && echo "   Frontend on port 8080: ${REMAINING_FRONTEND}"
+        [ -n "${REMAINING_FRONTEND}" ] && echo "   Frontend on port 8088: ${REMAINING_FRONTEND}"
         echo "🔍 Force killing all remaining processes..."
         for pid in ${REMAINING_BACKEND}; do
             kill -KILL "${pid}" 2>/dev/null

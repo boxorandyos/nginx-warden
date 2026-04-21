@@ -112,7 +112,7 @@ cd ../web && cp .env.example .env      # VITE_API_URL=auto or http://localhost:3
 cd apps/api && pnpm dev
 
 # Terminal 2 — UI
-cd apps/web && pnpm dev    # http://localhost:8080
+cd apps/web && pnpm dev    # http://localhost:8088
 ```
 
 Monorepo scripts: `pnpm build`, `pnpm lint`, `pnpm test` (per package).
@@ -147,7 +147,7 @@ sudo tail -f /var/log/nginx/error.log
 
 | Issue | What to check |
 |-------|----------------|
-| **Port in use** | `sudo ss -tlnp` — look for listeners on 3001 (API) and 8080 (UI); stop conflicting services. |
+| **Port in use** | `sudo ss -tlnp` — look for listeners on 3001 (API) and 8088 (UI); stop conflicting services. |
 | **DB connection** | `apps/api/.env` `DATABASE_URL`; container `docker ps`; `pnpm prisma migrate deploy` in `apps/api`. |
 | **CORS / API from browser** | Allowed origins in Configuration + `CORS_ORIGIN`; SPA using same host:3001 with `VITE_API_URL=auto`. |
 | **git pull blocked (dirty tree)** | The UI update runs `git stash push -u` before `git pull` so local edits and untracked files do not block merges. If pull still fails (diverged branches), on the server run `git fetch` / `git status` and resolve (merge, rebase, or `git reset --hard origin/main` if you accept losing local commits). |

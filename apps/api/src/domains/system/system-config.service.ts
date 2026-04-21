@@ -30,7 +30,7 @@ export class SystemConfigService {
   }
 
   /**
-   * Portal UI base URLs (CORS + Vite allowedHosts). Each value must be a valid http(s) origin (e.g. http://10.0.0.1:8080).
+   * Portal UI base URLs (CORS + Vite allowedHosts). Each value must be a valid http(s) origin (e.g. http://10.0.0.1:8088).
    */
   async updatePortalAccessOrigins(rawOrigins: unknown): Promise<SystemConfig> {
     if (!Array.isArray(rawOrigins)) {
