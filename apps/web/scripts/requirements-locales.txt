@@ -1,0 +1,2 @@
+# Optional: machine translation for locale sync scripts
+deep-translator>=1.11.0
