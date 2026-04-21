@@ -697,6 +697,21 @@ model SystemConfig {
   /// Browser origins used to open the admin UI (e.g. http://10.0.0.5:8088, https://portal.example.com). Drives API CORS and Vite preview allowed hosts.
   portalAccessOrigins String[] @default([])
 
+  // --- VRRP / Keepalived (HA VIP). Editable in UI only in master mode; VRRP config is synced to slaves.
+  keepalivedEnabled   Boolean @default(false)
+  /// e.g. 192.168.1.100/24 — same subnet as the VRRP interface
+  keepalivedVirtualIp  String?
+  /// Linux interface to bind (e.g. eth0). Slaves can override with env WARDEN_KEEPALIVED_INTERFACE.
+  keepalivedVrrpInterface String?
+  /// virtual_router_id 1-255, must match between cluster nodes
+  keepalivedRouterId     Int     @default(51)
+  /// VRRP auth (1–8 chars for simple PASS; synced so all nodes use the same pass)
+  keepalivedAuthPass     String?
+  /// Warden master node = higher VRRP priority (typ. MASTER state)
+  keepalivedPriorityMaster Int    @default(150)
+  /// Warden slave node = lower priority (typ. BACKUP state)
+  keepalivedPriorityBackup Int    @default(100)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

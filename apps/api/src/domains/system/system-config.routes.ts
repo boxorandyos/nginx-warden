@@ -4,6 +4,7 @@ import {
   getSystemConfig,
   updateNodeMode,
   updatePortalAccessOrigins,
+  updateKeepalived,
   restartFrontend,
   runSystemUpdate,
   getSystemUpdateLog,
@@ -22,6 +23,7 @@ router.use(authenticate);
 router.get('/', getSystemConfig);
 router.put('/node-mode', updateNodeMode);
 router.put('/portal-access', authorize('admin'), updatePortalAccessOrigins);
+router.put('/keepalived', authorize('admin'), updateKeepalived);
 router.post('/restart-frontend', authorize('admin'), restartFrontend);
 router.post('/system-update', authorize('admin'), runSystemUpdate);
 router.get('/system-update-log', authorize('admin'), getSystemUpdateLog);

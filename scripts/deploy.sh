@@ -82,7 +82,8 @@ if [[ "${EUID}" -ne 0 ]]; then
    error "This script must be run as root (use sudo)"
 fi
 
-# Minimal apt bootstrap: tools used by this script and CrowdSec helpers (python3, git for UI updates / keys)
+# Minimal apt bootstrap: tools used by this script and CrowdSec helpers (python3, git for UI updates / keys).
+# keepalived: VRRP / virtual IP (HA); Fleet → Nodes configures it via the API; package must be present to apply.
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq >> "$LOG_FILE" 2>&1 || true
 apt-get install -y --no-install-recommends \
@@ -94,7 +95,8 @@ apt-get install -y --no-install-recommends \
   git \
   gnupg \
   iproute2 \
-  >> "$LOG_FILE" 2>&1 || error "Failed to install base packages (apt: openssl curl wget ca-certificates python3 git gnupg iproute2)"
+  keepalived \
+  >> "$LOG_FILE" 2>&1 || error "Failed to install base packages (apt: openssl curl wget ca-certificates python3 git gnupg iproute2 keepalived)"
 
 if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
     error "Neither curl nor wget is available after apt install — check apt/network."
@@ -134,7 +136,7 @@ chmod +x "${PROJECT_DIR}/scripts/"*.sh 2>/dev/null || true
 
 # Step 1: Check Prerequisites
 log "Step 1/8: Checking prerequisites..."
-log "✓ Base packages (bootstrap): openssl, curl, wget, ca-certificates, python3, git, gnupg, iproute2"
+log "✓ Base packages (bootstrap): openssl, curl, wget, ca-certificates, python3, git, gnupg, iproute2, keepalived"
 
 # Check Node.js
 if ! command -v node &> /dev/null; then

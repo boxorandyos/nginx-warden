@@ -1,5 +1,5 @@
 import prisma from '../../config/database';
-import { SlaveNode, SlaveNodeResponse, SyncConfigData } from './cluster.types';
+import { SlaveNode, SlaveNodeResponse, SyncConfigData, SyncKeepalived } from './cluster.types';
 
 /**
  * Cluster Repository - Database operations for slave nodes
@@ -203,6 +203,8 @@ export class ClusterRepository {
     // Get Network Load Balancers
     const networkLoadBalancers = await this.getAllNetworkLoadBalancersForSync();
 
+    const sc = await prisma.systemConfig.findFirst();
+
     return {
       // Domains (NO timestamps, NO IDs)
       domains: domains.map(d => ({
@@ -309,7 +311,17 @@ export class ClusterRepository {
           backup: u.backup,
           down: u.down,
         })),
-      }))
+      })),
+
+      keepalived: {
+        enabled: sc?.keepalivedEnabled ?? false,
+        virtualIp: sc?.keepalivedVirtualIp ?? null,
+        vrrpInterface: sc?.keepalivedVrrpInterface ?? null,
+        routerId: sc?.keepalivedRouterId ?? 51,
+        authPass: sc?.keepalivedAuthPass ?? null,
+        priorityMaster: sc?.keepalivedPriorityMaster ?? 150,
+        priorityBackup: sc?.keepalivedPriorityBackup ?? 100,
+      } as SyncKeepalived
     };
   }
 
@@ -328,6 +340,7 @@ export class ClusterRepository {
       users: 0,
       networkLoadBalancers: 0,
       nlbUpstreams: 0,
+      keepalived: 0,
       totalChanges: 0
     };
 
@@ -559,9 +572,36 @@ export class ClusterRepository {
       }
     }
 
-    results.totalChanges = results.domains + results.ssl + results.modsecCRS +
-                           results.modsecCustom + results.acl + results.users +
-                           results.networkLoadBalancers;
+    // 8. Keepalived (VRRP) — from master; does not change node mode or slave connection fields
+    if (config.keepalived) {
+      const k = config.keepalived;
+      const existing = await prisma.systemConfig.findFirst();
+      if (existing) {
+        await prisma.systemConfig.update({
+          where: { id: existing.id },
+          data: {
+            keepalivedEnabled: k.enabled,
+            keepalivedVirtualIp: k.virtualIp,
+            keepalivedVrrpInterface: k.vrrpInterface,
+            keepalivedRouterId: k.routerId,
+            keepalivedAuthPass: k.authPass,
+            keepalivedPriorityMaster: k.priorityMaster,
+            keepalivedPriorityBackup: k.priorityBackup,
+          },
+        });
+        results.keepalived = 1;
+      }
+    }
+
+    results.totalChanges =
+      results.domains +
+      results.ssl +
+      results.modsecCRS +
+      results.modsecCustom +
+      results.acl +
+      results.users +
+      results.networkLoadBalancers +
+      results.keepalived;
 
     return results;
   }

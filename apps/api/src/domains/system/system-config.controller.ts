@@ -84,6 +84,24 @@ export const getSystemUpdateLog = async (req: AuthRequest, res: Response): Promi
 };
 
 /**
+ * VRRP / Keepalived HA (virtual IP) — admin only, master node mode only.
+ */
+export const updateKeepalived = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const config = await systemConfigService.updateKeepalivedSettings(req.body);
+    logger.info('Keepalived settings updated', { userId: req.user?.userId });
+    ResponseUtil.success(res, config, 'Keepalived settings updated');
+  } catch (error: unknown) {
+    logger.error('Update keepalived error:', error);
+    if (error instanceof ValidationError) {
+      ResponseUtil.error(res, error.message, 400);
+      return;
+    }
+    ResponseUtil.error(res, 'Failed to update Keepalived settings', 500);
+  }
+};
+
+/**
  * Get system configuration
  */
 export const getSystemConfig = async (req: AuthRequest, res: Response): Promise<void> => {

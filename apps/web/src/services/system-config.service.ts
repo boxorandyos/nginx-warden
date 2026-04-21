@@ -23,6 +23,22 @@ export const systemConfigService = {
     return response.data;
   },
 
+  /**
+   * VRRP / Keepalived virtual IP (HA). Master node only.
+   */
+  updateKeepalived: async (body: {
+    keepalivedEnabled: boolean;
+    keepalivedVirtualIp?: string | null;
+    keepalivedVrrpInterface?: string | null;
+    keepalivedRouterId?: number;
+    keepalivedAuthPass?: string | null;
+    keepalivedPriorityMaster?: number;
+    keepalivedPriorityBackup?: number;
+  }): Promise<ApiResponse<SystemConfig>> => {
+    const response = await api.put('/system-config/keepalived', body);
+    return response.data;
+  },
+
   restartFrontend: async (): Promise<ApiResponse<{ ok: boolean }>> => {
     const response = await api.post('/system-config/restart-frontend');
     return response.data;

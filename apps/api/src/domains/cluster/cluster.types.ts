@@ -67,6 +67,16 @@ export interface SlaveRequest extends Request {
 /**
  * Sync Configuration Data
  */
+export interface SyncKeepalived {
+  enabled: boolean;
+  virtualIp: string | null;
+  vrrpInterface: string | null;
+  routerId: number;
+  authPass: string | null;
+  priorityMaster: number;
+  priorityBackup: number;
+}
+
 export interface SyncConfigData {
   domains: SyncDomain[];
   sslCertificates: SyncSSLCertificate[];
@@ -75,6 +85,8 @@ export interface SyncConfigData {
   aclRules: SyncACLRule[];
   users: SyncUser[];
   networkLoadBalancers: SyncNetworkLoadBalancer[];
+  /** Omitted in exports from older masters — import ignores if absent. */
+  keepalived?: SyncKeepalived;
 }
 
 /**
@@ -235,6 +247,7 @@ export interface ImportResults {
   users: number;
   networkLoadBalancers: number;
   nlbUpstreams: number;
+  keepalived: number;
   totalChanges: number;
 }
 

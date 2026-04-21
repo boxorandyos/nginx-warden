@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import logger from '../../../utils/logger';
+import { applyKeepalivedFromDatabase } from '../../system/keepalived-sync.service';
 import { ClusterRepository } from '../cluster.repository';
 import { SyncConfigData, ImportResults } from '../cluster.types';
 
@@ -80,6 +81,14 @@ export class NodeSyncService {
 
       // Update SystemConfig with new connection timestamp
       await this.repository.updateSystemConfigLastConnected();
+
+      // Apply VRRP / keepalived on the slave (uses local nodeMode for MASTER vs BACKUP)
+      const kv = await applyKeepalivedFromDatabase();
+      if (!kv.ok) {
+        logger.warn('[NODE-SYNC] Keepalived apply after import did not succeed', {
+          message: kv.message,
+        });
+      }
 
       logger.info('[NODE-SYNC] Import completed', results);
 

@@ -74,6 +74,16 @@ export interface SystemConfig {
   lastConnectedAt: Date | null;
   connectionError: string | null;
   portalAccessOrigins: string[];
+
+  keepalivedEnabled: boolean;
+  keepalivedVirtualIp: string | null;
+  keepalivedVrrpInterface: string | null;
+  keepalivedRouterId: number;
+  keepalivedAuthPass?: string | null;
+  keepalivedAuthPassSet?: boolean;
+  keepalivedPriorityMaster: number;
+  keepalivedPriorityBackup: number;
+
   createdAt: Date;
   updatedAt: Date;
 }

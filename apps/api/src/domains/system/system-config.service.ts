@@ -9,6 +9,7 @@ import {
   setPortalAccessOriginsCache,
   writePortalHostsFile,
 } from './portal-access-sync.service';
+import { applyKeepalivedFromDatabase } from './keepalived-sync.service';
 
 const execAsync = promisify(exec);
 
@@ -23,10 +24,26 @@ export class SystemConfigService {
   }
 
   /**
+   * Strip secrets from API-facing system config (VRRP password).
+   */
+  private toPublicConfig(config: SystemConfig | null): SystemConfig {
+    if (!config) {
+      throw new NotFoundError('System config not found');
+    }
+    const c = config as any;
+    const { keepalivedAuthPass, ...rest } = c;
+    return {
+      ...rest,
+      keepalivedAuthPassSet: Boolean(keepalivedAuthPass && String(keepalivedAuthPass).length > 0),
+    } as SystemConfig;
+  }
+
+  /**
    * Get system configuration
    */
   async getSystemConfig(): Promise<SystemConfig> {
-    return this.repository.getSystemConfig();
+    const c = await this.repository.getSystemConfig();
+    return this.toPublicConfig(c);
   }
 
   /**
@@ -68,7 +85,7 @@ export class SystemConfigService {
         e
       );
     }
-    return updated;
+    return this.toPublicConfig(updated);
   }
 
   /**
@@ -118,7 +135,7 @@ export class SystemConfigService {
       );
     }
 
-    return config;
+    return this.toPublicConfig(config);
   }
 
   /**
@@ -175,7 +192,7 @@ export class SystemConfigService {
         masterPort,
       });
 
-      return updatedConfig;
+      return this.toPublicConfig(updatedConfig);
     } catch (connectionError: any) {
       // Connection failed, update config with error
       const errorMessage =
@@ -212,7 +229,8 @@ export class SystemConfigService {
       throw new NotFoundError('System config not found');
     }
 
-    return this.repository.disconnectFromMaster(config.id);
+    const d = await this.repository.disconnectFromMaster(config.id);
+    return this.toPublicConfig(d);
   }
 
   /**
@@ -398,5 +416,81 @@ export class SystemConfigService {
       details: importData.details,
       lastSyncAt: new Date().toISOString(),
     };
+  }
+
+  /**
+   * VRRP / Keepalived — master mode only. Writes config and restarts keepalived on this host.
+   */
+  async updateKeepalivedSettings(body: {
+    keepalivedEnabled: boolean;
+    keepalivedVirtualIp?: string | null;
+    keepalivedVrrpInterface?: string | null;
+    keepalivedRouterId?: number;
+    keepalivedAuthPass?: string | null;
+    keepalivedPriorityMaster?: number;
+    keepalivedPriorityBackup?: number;
+  }): Promise<SystemConfig> {
+    const c = await this.repository.getSystemConfig();
+    if (c.nodeMode !== 'master') {
+      throw new ValidationError('Keepalived can only be configured when this node is in master mode');
+    }
+
+    if (body.keepalivedEnabled) {
+      if (!body.keepalivedVirtualIp?.trim() || !body.keepalivedVrrpInterface?.trim()) {
+        throw new ValidationError('Virtual IP (CIDR) and network interface are required when HA is enabled');
+      }
+      const cidr = body.keepalivedVirtualIp.trim();
+      if (!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(cidr)) {
+        throw new ValidationError('Virtual IP must be a CIDR, e.g. 192.168.1.50/24');
+      }
+    }
+
+    const rid = body.keepalivedRouterId ?? c.keepalivedRouterId;
+    if (rid < 1 || rid > 255) {
+      throw new ValidationError('VRRP virtual router id must be between 1 and 255');
+    }
+
+    const pM = body.keepalivedPriorityMaster ?? 150;
+    const pB = body.keepalivedPriorityBackup ?? 100;
+    if (pM < 1 || pM > 255 || pB < 1 || pB > 255) {
+      throw new ValidationError('VRRP priorities must be between 1 and 255');
+    }
+    if (pM <= pB) {
+      throw new ValidationError('Master VRRP priority should be higher than the backup (slave) priority');
+    }
+
+    let newAuth: string | undefined;
+    if (typeof body.keepalivedAuthPass === 'string' && body.keepalivedAuthPass.length > 0) {
+      newAuth = body.keepalivedAuthPass.trim();
+      if (newAuth.length > 8) {
+        throw new ValidationError('VRRP auth password must be at most 8 characters (Keepalived limitation)');
+      }
+    }
+    const exPass = (c as { keepalivedAuthPass?: string | null }).keepalivedAuthPass;
+    const passToStore: string =
+      newAuth !== undefined
+        ? newAuth
+        : exPass && String(exPass).length > 0
+          ? String(exPass)
+          : 'warden01';
+
+    const updated = await this.repository.updateKeepalived(c.id, {
+      keepalivedEnabled: body.keepalivedEnabled,
+      keepalivedVirtualIp: body.keepalivedEnabled ? body.keepalivedVirtualIp?.trim() ?? null : null,
+      keepalivedVrrpInterface: body.keepalivedEnabled
+        ? body.keepalivedVrrpInterface?.trim() ?? null
+        : null,
+      keepalivedRouterId: rid,
+      keepalivedAuthPass: passToStore,
+      keepalivedPriorityMaster: pM,
+      keepalivedPriorityBackup: pB,
+    });
+
+    const applied = await applyKeepalivedFromDatabase();
+    if (body.keepalivedEnabled && !applied.ok) {
+      logger.warn('[KEEPALIVED] apply after update reported failure', { message: applied.message });
+    }
+
+    return this.toPublicConfig(updated);
   }
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -8,8 +8,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Card, CardContent } from "@/components/ui/card";
-import { Server, Link as LinkIcon, CheckCircle2, AlertCircle, Loader2, RefreshCw, XCircle } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
+import { Server, Link as LinkIcon, CheckCircle2, AlertCircle, Loader2, RefreshCw, XCircle, Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { systemConfigService } from "@/services/system-config.service";
 
@@ -37,6 +38,30 @@ const SystemConfig = ({ systemConfig, isLoading }: SystemConfigProps) => {
     open: false,
     newMode: null
   });
+
+  const [kaForm, setKaForm] = useState({
+    keepalivedEnabled: false,
+    keepalivedVirtualIp: '',
+    keepalivedVrrpInterface: '',
+    keepalivedRouterId: 51,
+    keepalivedPriorityMaster: 150,
+    keepalivedPriorityBackup: 100,
+    keepalivedAuthPass: '',
+  });
+
+  useEffect(() => {
+    if (!systemConfig) return;
+    setKaForm((prev) => ({
+      ...prev,
+      keepalivedEnabled: systemConfig.keepalivedEnabled ?? false,
+      keepalivedVirtualIp: systemConfig.keepalivedVirtualIp ?? '',
+      keepalivedVrrpInterface: systemConfig.keepalivedVrrpInterface ?? '',
+      keepalivedRouterId: systemConfig.keepalivedRouterId ?? 51,
+      keepalivedPriorityMaster: systemConfig.keepalivedPriorityMaster ?? 150,
+      keepalivedPriorityBackup: systemConfig.keepalivedPriorityBackup ?? 100,
+      keepalivedAuthPass: '',
+    }));
+  }, [systemConfig]);
 
   const updateNodeModeMutation = useMutation({
     mutationFn: systemConfigService.updateNodeMode,
@@ -124,6 +149,24 @@ const SystemConfig = ({ systemConfig, isLoading }: SystemConfigProps) => {
         variant: "destructive"
       });
     }
+  });
+
+  const updateKeepalivedMutation = useMutation({
+    mutationFn: systemConfigService.updateKeepalived,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-config'] });
+      toast({
+        title: t("common.success"),
+        description: t("nodes.system.keepalivedToastOk"),
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: t("common.error"),
+        description: error.response?.data?.message || t("common.error"),
+        variant: "destructive",
+      });
+    },
   });
 
   const syncFromMasterMutation = useMutation({
@@ -276,6 +319,127 @@ const SystemConfig = ({ systemConfig, isLoading }: SystemConfigProps) => {
         </Alert>
       )}
 
+      {!isLoading && isMasterMode && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Shield className="h-5 w-5 text-primary" />
+              <div>
+                <CardTitle>{t("nodes.system.keepalivedTitle")}</CardTitle>
+                <CardDescription className="mt-1.5">
+                  {t("nodes.system.keepalivedDesc")}
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between gap-4 rounded-md border p-3">
+              <div>
+                <p className="text-sm font-medium">{t("nodes.system.keepalivedEnabled")}</p>
+                <p className="text-xs text-muted-foreground">{t("nodes.system.keepalivedEnabledHint")}</p>
+              </div>
+              <Switch
+                checked={kaForm.keepalivedEnabled}
+                onCheckedChange={(c) => setKaForm((f) => ({ ...f, keepalivedEnabled: c }))}
+              />
+            </div>
+            {kaForm.keepalivedEnabled && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-2 sm:col-span-2">
+                  <Label htmlFor="kvip">{t("nodes.system.keepalivedVip")}</Label>
+                  <Input
+                    id="kvip"
+                    value={kaForm.keepalivedVirtualIp}
+                    onChange={(e) => setKaForm((f) => ({ ...f, keepalivedVirtualIp: e.target.value }))}
+                    placeholder="192.168.1.100/24"
+                    className="font-mono"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="kiface">{t("nodes.system.keepalivedIface")}</Label>
+                  <Input
+                    id="kiface"
+                    value={kaForm.keepalivedVrrpInterface}
+                    onChange={(e) => setKaForm((f) => ({ ...f, keepalivedVrrpInterface: e.target.value }))}
+                    placeholder="eth0"
+                    className="font-mono"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="kvrid">{t("nodes.system.keepalivedVrid")}</Label>
+                  <Input
+                    id="kvrid"
+                    type="number"
+                    min={1}
+                    max={255}
+                    value={kaForm.keepalivedRouterId}
+                    onChange={(e) => setKaForm((f) => ({ ...f, keepalivedRouterId: Number(e.target.value) }))}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="kpm">{t("nodes.system.keepalivedPrioMaster")}</Label>
+                  <Input
+                    id="kpm"
+                    type="number"
+                    min={1}
+                    max={255}
+                    value={kaForm.keepalivedPriorityMaster}
+                    onChange={(e) => setKaForm((f) => ({ ...f, keepalivedPriorityMaster: Number(e.target.value) }))}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="kpb">{t("nodes.system.keepalivedPrioBackup")}</Label>
+                  <Input
+                    id="kpb"
+                    type="number"
+                    min={1}
+                    max={255}
+                    value={kaForm.keepalivedPriorityBackup}
+                    onChange={(e) => setKaForm((f) => ({ ...f, keepalivedPriorityBackup: Number(e.target.value) }))}
+                  />
+                </div>
+                <div className="grid gap-2 sm:col-span-2">
+                  <Label htmlFor="kauth">{t("nodes.system.keepalivedAuth")}</Label>
+                  <Input
+                    id="kauth"
+                    type="password"
+                    autoComplete="new-password"
+                    value={kaForm.keepalivedAuthPass}
+                    onChange={(e) => setKaForm((f) => ({ ...f, keepalivedAuthPass: e.target.value }))}
+                    placeholder={systemConfig?.keepalivedAuthPassSet ? t("nodes.system.keepalivedAuthKeep") : "warden01"}
+                    className="font-mono"
+                  />
+                  <p className="text-xs text-muted-foreground">{t("nodes.system.keepalivedAuthHint")}</p>
+                </div>
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground border-t pt-3">{t("nodes.system.keepalivedFootnote")}</p>
+            <Button
+              type="button"
+              disabled={updateKeepalivedMutation.isPending}
+              onClick={() =>
+                updateKeepalivedMutation.mutate({
+                  keepalivedEnabled: kaForm.keepalivedEnabled,
+                  keepalivedVirtualIp: kaForm.keepalivedVirtualIp || null,
+                  keepalivedVrrpInterface: kaForm.keepalivedVrrpInterface || null,
+                  keepalivedRouterId: kaForm.keepalivedRouterId,
+                  keepalivedAuthPass: kaForm.keepalivedAuthPass || undefined,
+                  keepalivedPriorityMaster: kaForm.keepalivedPriorityMaster,
+                  keepalivedPriorityBackup: kaForm.keepalivedPriorityBackup,
+                })
+              }
+            >
+              {updateKeepalivedMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Shield className="h-4 w-4 mr-2" />
+              )}
+              {t("nodes.system.keepalivedSave")}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {!isLoading && isSlaveMode && (
         <Card>
           <CardContent className="pt-6">
@@ -357,6 +521,12 @@ const SystemConfig = ({ systemConfig, isLoading }: SystemConfigProps) => {
                   </Button>
                 </div>
               </div>
+            )}
+            {systemConfig?.connected && systemConfig?.keepalivedEnabled && (
+              <Alert className="mt-2 border-amber-500/50 bg-amber-50/50 dark:bg-amber-950/20">
+                <Shield className="h-4 w-4" />
+                <AlertDescription className="text-sm">{t("nodes.system.keepalivedSlaveNote")}</AlertDescription>
+              </Alert>
             )}
           </CardContent>
         </Card>

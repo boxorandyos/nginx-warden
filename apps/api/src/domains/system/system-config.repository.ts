@@ -174,4 +174,34 @@ export class SystemConfigRepository {
     });
     return config as SystemConfig;
   }
+
+  /**
+   * Update Keepalived / VRRP fields (master-only; validated in service).
+   */
+  async updateKeepalived(
+    configId: string,
+    data: {
+      keepalivedEnabled: boolean;
+      keepalivedVirtualIp: string | null;
+      keepalivedVrrpInterface: string | null;
+      keepalivedRouterId: number;
+      keepalivedAuthPass: string;
+      keepalivedPriorityMaster: number;
+      keepalivedPriorityBackup: number;
+    }
+  ): Promise<SystemConfig> {
+    const config = await prisma.systemConfig.update({
+      where: { id: configId },
+      data: {
+        keepalivedEnabled: data.keepalivedEnabled,
+        keepalivedVirtualIp: data.keepalivedVirtualIp,
+        keepalivedVrrpInterface: data.keepalivedVrrpInterface,
+        keepalivedRouterId: data.keepalivedRouterId,
+        keepalivedAuthPass: data.keepalivedAuthPass,
+        keepalivedPriorityMaster: data.keepalivedPriorityMaster,
+        keepalivedPriorityBackup: data.keepalivedPriorityBackup,
+      },
+    });
+    return config as SystemConfig;
+  }
 }

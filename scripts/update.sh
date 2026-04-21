@@ -132,6 +132,17 @@ else
     log "✓ htpasswd $(htpasswd -v 2>&1 | head -n1 | awk '{print $3}') detected"
 fi
 
+# VRRP / high availability (virtual IP) — same package the API uses to write /etc/keepalived/keepalived.conf
+if ! dpkg -s keepalived &>/dev/null; then
+    warn "keepalived not installed. Installing keepalived..."
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -qq >> "$LOG_FILE" 2>&1 || true
+    apt-get install -y --no-install-recommends keepalived >> "$LOG_FILE" 2>&1 || error "Failed to install keepalived (apt)"
+    log "✓ keepalived installed"
+else
+    log "✓ keepalived present (dpkg)"
+fi
+
 
 # Check Node.js
 if ! command -v node &> /dev/null; then

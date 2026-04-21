@@ -351,6 +351,15 @@ export interface SystemConfig {
 
   /** Full origins for opening the admin UI (CORS + Vite hosts file) */
   portalAccessOrigins?: string[];
+
+  /** VRRP / Keepalived — set on master; synced to slaves */
+  keepalivedEnabled?: boolean;
+  keepalivedVirtualIp?: string | null;
+  keepalivedVrrpInterface?: string | null;
+  keepalivedRouterId?: number;
+  keepalivedAuthPassSet?: boolean;
+  keepalivedPriorityMaster?: number;
+  keepalivedPriorityBackup?: number;
   
   createdAt: string;
   updatedAt: string;
