@@ -102,7 +102,7 @@ cd ModSecurity
 git submodule init >> "${INSTALL_LOG}" 2>&1
 git submodule update >> "${INSTALL_LOG}" 2>&1
 ./build.sh >> "${INSTALL_LOG}" 2>&1 || error_exit "Failed to build ModSecurity"
-./configure >> "${INSTALL_LOG}" 2>&1 || error_exit "Failed to configure ModSecurity"
+./configure --with-pcre2 >> "${INSTALL_LOG}" 2>&1 || error_exit "Failed to configure ModSecurity"
 make -j$(nproc) >> "${INSTALL_LOG}" 2>&1 || error_exit "Failed to compile ModSecurity"
 make install >> "${INSTALL_LOG}" 2>&1 || error_exit "Failed to install ModSecurity"
 
