@@ -60,14 +60,13 @@ apt-get update >> "${INSTALL_LOG}" 2>&1 || error_exit "Failed to update package 
 
 apt-get install -y \
     build-essential \
-    libpcre3 \
-    libpcre3-dev \
+    libpcre2-dev \
     zlib1g \
     zlib1g-dev \
     libssl-dev \
     libgd-dev \
     libgeoip-dev \
-    libxml2 \
+    libxml2-16 \
     libxml2-dev \
     libyajl-dev \
     liblmdb-dev \
@@ -77,6 +76,7 @@ apt-get install -y \
     autoconf \
     git \
     wget \
+    pkg-config \
     >> "${INSTALL_LOG}" 2>&1 || error_exit "Failed to install dependencies"
 
 log "Dependencies installed successfully"
