@@ -47,11 +47,17 @@ export class NginxConfigService {
 
   /**
    * Generate complete Nginx configuration for a domain
+   * @param options.deferValidation - When true, write the file/symlink but do not run
+   *   nginx -t (and never restore a prior broken backup). Used by SSL heal batch repair.
    */
-  async generateConfig(domain: DomainWithRelations): Promise<void> {
+  async generateConfig(
+    domain: DomainWithRelations,
+    options: { deferValidation?: boolean } = {}
+  ): Promise<void> {
     const configPath = path.join(this.sitesAvailable, `${domain.name}.conf`);
     const enabledPath = path.join(this.sitesEnabled, `${domain.name}.conf`);
     const backupPath = path.join(this.sitesAvailable, `${domain.name}.conf.backup`);
+    const deferValidation = options.deferValidation === true;
 
     // Debug logging
     logger.info(`Generating nginx config for ${domain.name}:`);
@@ -80,24 +86,39 @@ export class NginxConfigService {
       await fs.mkdir(this.sitesAvailable, { recursive: true });
       await fs.mkdir(this.sitesEnabled, { recursive: true });
 
-      // Backup existing config if it exists
-      try {
-        await fs.copyFile(configPath, backupPath);
-        logger.info(`Backed up existing config to ${backupPath}`);
-      } catch (e) {
-        // No existing config to backup
+      // Backup existing config if it exists (only used when we validate immediately)
+      if (!deferValidation) {
+        try {
+          await fs.copyFile(configPath, backupPath);
+          logger.info(`Backed up existing config to ${backupPath}`);
+        } catch (e) {
+          // No existing config to backup
+        }
       }
 
       await fs.writeFile(configPath, fullConfig);
 
-      // Create symlink if domain is active
-      if (domain.status === 'active') {
+      // Always refresh the enabled symlink when the domain is active, OR when a
+      // stale enabled entry still exists (e.g. SSL deleted but conf left behind).
+      let enabledExists = false;
+      try {
+        await fs.lstat(enabledPath);
+        enabledExists = true;
+      } catch {
+        enabledExists = false;
+      }
+      if (domain.status === 'active' || enabledExists) {
         try {
           await fs.unlink(enabledPath);
         } catch (e) {
           // File doesn't exist, ignore
         }
         await fs.symlink(configPath, enabledPath);
+      }
+
+      if (deferValidation) {
+        logger.info(`Nginx configuration written for ${domain.name} (validation deferred)`);
+        return;
       }
 
       // Validate nginx configuration

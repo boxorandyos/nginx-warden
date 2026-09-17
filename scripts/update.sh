@@ -166,6 +166,46 @@ source "${SCRIPT_DIR}/lib/warden-access-ip.sh"
 warden_resolve_access_ips_and_cors "${UI_PORT}"
 log "ACCESS_IP=${ACCESS_IP} (LAN first; set WARDEN_ACCESS_IP in /etc/nginx-warden/ports.env to override). If login fails, add http://${ACCESS_IP}:${UI_PORT} to CORS (Fleet → Configuration) or apps/api/.env"
 
+# Ensure apps/api/.env CORS_ORIGIN includes the LAN UI origin (merge; never wipe secrets).
+# Without this, browsing http://10.x.x.x:8088 while CORS only lists localhost → Axios Network Error.
+ensure_cors_origin_in_env() {
+  local env_file="${BACKEND_DIR}/.env"
+  local need="http://${ACCESS_IP}:${UI_PORT}"
+  local need_local="http://127.0.0.1:${UI_PORT}"
+  local need_localhost="http://localhost:${UI_PORT}"
+  [[ -f "$env_file" ]] || return 0
+  local current
+  current=$(grep -E '^CORS_ORIGIN=' "$env_file" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+  local merged="${current}"
+  for o in "$need" "$need_local" "$need_localhost"; do
+    if [[ -n "$o" && ",${merged}," != *",${o},"* ]]; then
+      if [[ -z "$merged" ]]; then
+        merged="$o"
+      else
+        merged="${merged},${o}"
+      fi
+    fi
+  done
+  if [[ "$merged" != "$current" ]]; then
+    if grep -qE '^CORS_ORIGIN=' "$env_file"; then
+      sed -i "s|^CORS_ORIGIN=.*|CORS_ORIGIN=${merged}|" "$env_file"
+    else
+      echo "CORS_ORIGIN=${merged}" >> "$env_file"
+    fi
+    log "✓ Updated CORS_ORIGIN in apps/api/.env to include ${need}"
+  else
+    log "✓ CORS_ORIGIN already includes ${need}"
+  fi
+}
+ensure_cors_origin_in_env
+
+# Immediately unblock nginx if a deleted cert left a broken sites-enabled entry
+if [[ -x "${SCRIPT_DIR}/repair-nginx-missing-certs.sh" ]] || [[ -f "${SCRIPT_DIR}/repair-nginx-missing-certs.sh" ]]; then
+  chmod +x "${SCRIPT_DIR}/repair-nginx-missing-certs.sh" 2>/dev/null || true
+  log "Repairing nginx site configs that reference missing SSL files..."
+  bash "${SCRIPT_DIR}/repair-nginx-missing-certs.sh" >> "$LOG_FILE" 2>&1 || warn "repair-nginx-missing-certs.sh reported an issue (continuing)"
+fi
+
 # Step 2: Stop services before update
 log "Step 2/6: Stopping services for update..."
 
@@ -293,6 +333,11 @@ if ! systemctl is-active --quiet nginx-warden-frontend.service; then
 fi
 log "✓ Frontend service started"
 
+# Re-run missing-cert repair after API heal (backend regenerates site configs on start)
+if [[ -f "${SCRIPT_DIR}/repair-nginx-missing-certs.sh" ]]; then
+  bash "${SCRIPT_DIR}/repair-nginx-missing-certs.sh" >> "$LOG_FILE" 2>&1 || warn "post-heal cert repair had issues (continuing)"
+fi
+
 # Update nginx configuration (copy backup; restore on failure — never leave nginx without a valid config)
 ORIGINAL_FILE_NGINX="/etc/nginx/nginx.conf"
 BACKUP_FILE="${ORIGINAL_FILE_NGINX}.bak-update-$(date +%Y%m%d%H%M%S)"
@@ -305,11 +350,15 @@ if [ -f "$PROJECT_DIR/config/nginx.conf" ]; then
         error "Failed to copy nginx config"
     fi
     if ! nginx -t >> "$LOG_FILE" 2>&1; then
-        if [ -f "${BACKUP_FILE}" ]; then
-            cp -a "${BACKUP_FILE}" "${ORIGINAL_FILE_NGINX}" || warn "Failed to restore nginx.conf from backup"
-            log "✓ Restored previous nginx.conf after failed nginx -t"
+        warn "nginx -t failed after copying nginx.conf — attempting missing-cert repair and retry"
+        bash "${SCRIPT_DIR}/repair-nginx-missing-certs.sh" >> "$LOG_FILE" 2>&1 || true
+        if ! nginx -t >> "$LOG_FILE" 2>&1; then
+            if [ -f "${BACKUP_FILE}" ]; then
+                cp -a "${BACKUP_FILE}" "${ORIGINAL_FILE_NGINX}" || warn "Failed to restore nginx.conf from backup"
+                log "✓ Restored previous nginx.conf after failed nginx -t"
+            fi
+            error "Nginx configuration test failed. Previous config restored if backup existed. Check logs: tail -f $LOG_FILE"
         fi
-        error "Nginx configuration test failed. Previous config restored if backup existed. Check logs: tail -f $LOG_FILE"
     fi
     systemctl reload nginx || error "Failed to reload nginx"
     log "✓ Nginx reloaded"

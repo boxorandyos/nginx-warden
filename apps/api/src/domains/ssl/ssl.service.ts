@@ -562,9 +562,12 @@ export class SSLService {
           ...domain,
           sslEnabled: false,
           sslCertificate: null,
-        });
-        if (domain.status === 'active') {
+        }, { deferValidation: false });
+        // Ensure enabled entry is refreshed even if status flipped
+        try {
           await nginxConfigService.enableConfig(domain.name);
+        } catch {
+          /* domain may be inactive */
         }
         const reloaded = await nginxReloadService.autoReload(true);
         if (!reloaded) {

@@ -101,7 +101,7 @@ async function startServer(): Promise<void> {
       ),
     ]);
     logger.info(
-      `🩺 SSL/nginx heal: disabled=${heal.disabledSsl}, certs=${heal.certsWritten}, domains=${heal.domainsRegenerated}, reloadOk=${heal.reloadOk}`
+      `🩺 SSL/nginx heal: disabledSsl=${heal.disabledSsl}, certs=${heal.certsWritten}, domains=${heal.domainsRegenerated}, sitesDisabledMissingCert=${heal.sitesDisabledMissingCert}, reloadOk=${heal.reloadOk}`
     );
   } catch (error) {
     logger.error('SSL/nginx heal failed (continuing startup):', error);
