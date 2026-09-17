@@ -513,8 +513,23 @@ function DomainActions() {
       defaultDomainId={sslDialogDomain?.id}
       defaultDomainName={sslDialogDomain?.name}
       onSuccess={() => {
+        const domain = sslDialogDomain;
         queryClient.invalidateQueries({ queryKey: domainQueryKeys.lists() });
-        toast.success(t('domains.toast.sslCertCreated'));
+        if (!domain) return;
+        toggleSSL
+          .mutateAsync({ id: domain.id, sslEnabled: true })
+          .then(() => {
+            toast.success(
+              t('domains.toast.sslToggled', {
+                name: domain.name,
+                state: t('domains.state.enabled'),
+              })
+            );
+          })
+          .catch((error: any) => {
+            toast.success(t('domains.toast.sslCertCreated'));
+            toast.error(error.response?.data?.message || t('domains.toast.sslToggleFailed'));
+          });
       }}
     />
     </>

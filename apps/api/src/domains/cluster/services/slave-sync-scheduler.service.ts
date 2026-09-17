@@ -2,6 +2,7 @@ import axios from 'axios';
 import logger from '../../../utils/logger';
 import { SystemConfigRepository } from '../../system/system-config.repository';
 import { nodeSyncService } from './node-sync.service';
+import { applySyncedConfigService } from './apply-synced-config.service';
 
 /**
  * Slave-side pull scheduler. Master-only installs never start this loop.
@@ -9,10 +10,12 @@ import { nodeSyncService } from './node-sync.service';
 class SlaveSyncSchedulerService {
   private intervalId: NodeJS.Timeout | null = null;
   private inFlight = false;
+  private appliedLocalOnce = false;
   private repository = new SystemConfigRepository();
 
   async restart(): Promise<void> {
     this.stop();
+    this.appliedLocalOnce = false;
     await this.start();
   }
 
@@ -101,6 +104,17 @@ class SlaveSyncSchedulerService {
 
       const { hash, config: masterConfig } = response.data.data;
       const result = await nodeSyncService.importFromMaster(hash, masterConfig);
+
+      // If the DB was already in sync (hash match) nginx/certs may still be missing
+      // from a previous broken import. Apply once per process start.
+      if (!result.imported && !this.appliedLocalOnce) {
+        try {
+          await applySyncedConfigService.applyLocalNginxAndCerts();
+        } catch (applyErr) {
+          logger.warn('[SLAVE-SYNC] Failed to apply nginx/certs on hash-match pull', applyErr);
+        }
+      }
+      this.appliedLocalOnce = true;
 
       await this.repository.updateLastSyncHash(config.id, hash);
 

@@ -9,6 +9,7 @@ import { cloudflareIpsService } from './cloudflare-ips.service';
 import { DEFAULT_CLIENT_MAX_BODY_SIZE } from '../../../shared/constants/domain.constants';
 import { ModsecEngineMode } from '@prisma/client';
 import {
+  nginxLocationMatch,
   sortLocationsLongestFirst,
   validateCustomLocations,
 } from './custom-locations.util';
@@ -707,9 +708,7 @@ ${healthCheckSettings}`;
       return ordered.map((loc: any) => {
         const { path: locPathRaw, useUpstream, upstreamType, upstreams, config } = loc;
         const locPath = locPathRaw;
-        const locationMatch = locPath.startsWith('~') || locPath.startsWith('=')
-          ? locPath
-          : `^~ ${locPath}`;
+        const locationMatch = nginxLocationMatch(locPath);
         
         // Case 1: User disabled upstream (useUpstream = false) - use custom config only
         if (useUpstream === false) {

@@ -43,7 +43,8 @@ export class NginxReloadService {
   private async verifyRunning(): Promise<boolean> {
     try {
       const { stdout } = await execAsync(
-        'pgrep nginx > /dev/null && echo "running" || echo "not running"'
+        'pgrep nginx > /dev/null && echo "running" || echo "not running"',
+        { timeout: 5000 }
       );
       return stdout.trim() === 'running';
     } catch {

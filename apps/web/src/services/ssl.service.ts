@@ -24,6 +24,16 @@ export interface UpdateSSLRequest {
 }
 
 export const sslService = {
+  async getSystemInfo(): Promise<{
+    defaultCA: 'letsencrypt' | 'zerossl' | string;
+    caServerOptions: string[];
+    isAcmeInstalled: boolean;
+    zerosslEabConfigured: boolean;
+  }> {
+    const response = await api.get('/ssl/system-info');
+    return response.data.data;
+  },
+
   /**
    * Get all SSL certificates
    */

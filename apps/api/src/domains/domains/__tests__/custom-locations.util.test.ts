@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  nginxLocationMatch,
   normalizeLocationPath,
   sortLocationsLongestFirst,
   validateCustomLocations,
@@ -51,5 +52,11 @@ describe('custom-locations.util', () => {
     ]);
     expect(sorted[0]?.path).toBe('/api/v2/users');
     expect(sorted.map((l) => l.path).slice(1).sort()).toEqual(['/api', '/blog']);
+  });
+
+  it('emits prefix ^~ matchers for subdirectory locations', () => {
+    expect(nginxLocationMatch('/api')).toBe('^~ /api');
+    expect(nginxLocationMatch('blog/')).toBe('^~ /blog');
+    expect(nginxLocationMatch('~* \\.php$')).toBe('~* \\.php$');
   });
 });

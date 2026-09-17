@@ -50,6 +50,14 @@ export function InstallationProgressDialog({ open, onOpenChange, onComplete }: I
   useEffect(() => {
     if (!open) return;
 
+    let interval: ReturnType<typeof setInterval> | undefined;
+    const stopPolling = () => {
+      if (interval) {
+        clearInterval(interval);
+        interval = undefined;
+      }
+    };
+
     const checkStatus = async () => {
       try {
         const installStatus = await domainService.getInstallationStatus();
@@ -61,14 +69,18 @@ export function InstallationProgressDialog({ open, onOpenChange, onComplete }: I
 
           if (installStatus.status === 'success' || installStatus.step === 'completed') {
             setIsComplete(true);
+            stopPolling();
             if (onComplete) {
               setTimeout(onComplete, 2000);
             }
             return;
           }
 
-          if (installStatus.status === 'failed') {
-            setHasError(true);
+          if (installStatus.status === 'failed' || installStatus.status === 'not_started') {
+            if (installStatus.status === 'failed') {
+              setHasError(true);
+            }
+            stopPolling();
             return;
           }
         }
@@ -78,10 +90,9 @@ export function InstallationProgressDialog({ open, onOpenChange, onComplete }: I
     };
 
     checkStatus();
+    interval = setInterval(checkStatus, 3000);
 
-    const interval = setInterval(checkStatus, 3000);
-
-    return () => clearInterval(interval);
+    return () => stopPolling();
   }, [open, onComplete]);
 
   if (!status) {

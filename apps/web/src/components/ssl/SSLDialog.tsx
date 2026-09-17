@@ -24,6 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Domain } from '@/types';
 import { toast } from 'sonner';
 import { useIssueAutoSSL, useUploadManualSSL, useDomains } from '@/queries';
+import { sslService } from '@/services/ssl.service';
 
 interface SSLDialogProps {
   open: boolean;
@@ -68,6 +69,19 @@ export function SSLDialog({ open, onOpenChange, onSuccess, defaultDomainId, defa
       setFormData((prev) => ({ ...prev, domainId: defaultDomainId }));
     }
   }, [open, defaultDomainId]);
+
+  useEffect(() => {
+    if (!open) return;
+    sslService
+      .getSystemInfo()
+      .then((info) => {
+        const ca = info.defaultCA === 'zerossl' ? 'zerossl' : 'letsencrypt';
+        setFormData((prev) => ({ ...prev, acmeProvider: ca }));
+      })
+      .catch(() => {
+        /* keep Let's Encrypt default */
+      });
+  }, [open]);
 
   useEffect(() => {
     if (domainsError) {

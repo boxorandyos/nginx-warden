@@ -142,3 +142,15 @@ export function validateCustomLocations(
 export function sortLocationsLongestFirst<T extends { path: string }>(locations: T[]): T[] {
   return [...locations].sort((a, b) => b.path.length - a.path.length);
 }
+
+/**
+ * nginx location matcher. Prefix paths use ^~ so they win over regex locations.
+ */
+export function nginxLocationMatch(path: string): string {
+  const trimmed = (path || '').trim();
+  if (trimmed.startsWith('~') || trimmed.startsWith('=')) {
+    return trimmed;
+  }
+  const normalized = normalizeLocationPath(trimmed);
+  return `^~ ${normalized}`;
+}
