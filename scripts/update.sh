@@ -360,27 +360,21 @@ if [ -f "$PROJECT_DIR/config/nginx.conf" ]; then
             error "Nginx configuration test failed. Previous config restored if backup existed. Check logs: tail -f $LOG_FILE"
         fi
     fi
-    # reload fails when nginx is inactive (common after earlier failed updates). Fall back to start/restart.
-    if systemctl is-active --quiet nginx; then
-        if systemctl reload nginx >> "$LOG_FILE" 2>&1; then
-            log "✓ Nginx reloaded"
-        else
-            warn "systemctl reload nginx failed — attempting restart"
-            systemctl restart nginx >> "$LOG_FILE" 2>&1 || error "Failed to restart nginx after reload failure. Check: systemctl status nginx; journalctl -u nginx -n 50"
-            log "✓ Nginx restarted"
-        fi
-    else
-        warn "nginx is not active — starting instead of reload"
-        systemctl start nginx >> "$LOG_FILE" 2>&1 || error "Failed to start nginx. Check: systemctl status nginx; journalctl -u nginx -n 50"
-        log "✓ Nginx started"
+    # Reload if active; if inactive (or ports held by orphan nginx), clear orphans then start.
+    # shellcheck disable=SC1091
+    source "${SCRIPT_DIR}/ensure-nginx-running.sh"
+    if ! ensure_nginx_running strict >> "$LOG_FILE" 2>&1; then
+        error "Failed to start/reload nginx. Orphan process holding :80/:443? Run: ss -tlnp | grep -E ':(80|443|13306)'; nginx -s quit; systemctl start nginx. See: systemctl status nginx; journalctl -u nginx -n 50"
     fi
 else
     error "Nginx config not found in $PROJECT_DIR/config/nginx.conf"
 fi
 
-# Ensure nginx is running
+# Ensure nginx is running (second pass after any race)
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/ensure-nginx-running.sh"
 if ! systemctl is-active --quiet nginx; then
-    systemctl start nginx >> "$LOG_FILE" 2>&1 || error "Failed to start nginx"
+    ensure_nginx_running strict >> "$LOG_FILE" 2>&1 || error "Failed to start nginx"
 fi
 log "✓ Nginx is running"
 
