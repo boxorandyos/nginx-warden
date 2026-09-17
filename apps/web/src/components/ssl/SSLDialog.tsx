@@ -380,7 +380,7 @@ export function SSLDialog({ open, onOpenChange, onSuccess, defaultDomainId, defa
                 <p className="text-sm text-muted-foreground">
                   Automatically obtain and renew SSL certificates. Choose a certificate authority
                   per certificate. Let's Encrypt needs no extra credentials; ZeroSSL requires EAB
-                  keys (configure them on this SSL page or under Fleet → Configuration).
+                  keys under Fleet → Configuration.
                 </p>
               </div>
 

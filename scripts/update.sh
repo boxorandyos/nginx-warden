@@ -268,11 +268,22 @@ fi
 
 # Start backend service
 systemctl start nginx-warden-backend.service || error "Failed to start backend service"
-sleep 3
+# Wait until API is up (SSL/nginx heal runs before listen)
+BACKEND_UP=false
+for i in {1..60}; do
+    if curl -fsS --connect-timeout 2 --max-time 5 "http://127.0.0.1:${API_PORT}/api/health" >/dev/null 2>&1; then
+        BACKEND_UP=true
+        break
+    fi
+    sleep 1
+done
+if [ "$BACKEND_UP" != true ]; then
+    error "Backend service failed to become healthy. Check logs: journalctl -u nginx-warden-backend.service"
+fi
 if ! systemctl is-active --quiet nginx-warden-backend.service; then
     error "Backend service failed to start. Check logs: journalctl -u nginx-warden-backend.service"
 fi
-log "✓ Backend service started"
+log "✓ Backend service started (health OK — SSL/nginx heal completed)"
 
 # Start frontend service
 systemctl start nginx-warden-frontend.service || error "Failed to start frontend service"

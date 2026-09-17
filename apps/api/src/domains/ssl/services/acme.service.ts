@@ -252,7 +252,7 @@ export class AcmeService {
       if (provider === 'zerossl') {
         if (!options.eabKid || !options.eabHmacKey) {
           throw new Error(
-            'ZeroSSL requires External Account Binding (EAB) credentials. Add the EAB Key ID and HMAC key on the SSL page, or renew/issue with Let\'s Encrypt instead.'
+            'ZeroSSL requires External Account Binding (EAB) credentials. Add the EAB Key ID and HMAC key under Fleet → Configuration, or renew/issue with Let\'s Encrypt instead.'
           );
         }
         await this.registerZeroSslAccount(
