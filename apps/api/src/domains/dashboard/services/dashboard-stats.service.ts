@@ -21,13 +21,13 @@ export class DashboardStatsService {
    */
   async getTrafficStats(): Promise<TrafficStats> {
     try {
-      // Try to get actual traffic from nginx logs
-      const { stdout } = await execAsync(
-        "grep -c '' /var/log/nginx/access.log 2>/dev/null || echo 0"
-      );
-      const totalRequests = parseInt(stdout.trim()) || 0;
+      // Prefer wc -l (fast) over grepping the entire access log
+      const { stdout } = await execAsync('wc -l < /var/log/nginx/access.log 2>/dev/null || echo 0', {
+        timeout: 5000,
+        maxBuffer: 1024 * 1024,
+      });
+      const totalRequests = parseInt(String(stdout).trim(), 10) || 0;
 
-      // Calculate daily average
       const requestsPerDay = totalRequests > 0 ? totalRequests : 2400000;
 
       return {
