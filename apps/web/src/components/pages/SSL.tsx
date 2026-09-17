@@ -5,10 +5,12 @@ import { Button } from '@/components/ui/button';
 import { Suspense } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { SSLDialog } from '@/components/ssl/SSLDialog';
+import { AcmeSettingsCard } from '@/components/ssl/AcmeSettingsCard';
 import { SSLStats } from './SSLStats';
 import { SSLTable } from './SSLTable';
 import { SkeletonStatsCard, SkeletonTable } from '@/components/ui/skeletons';
 import { sslQueryKeys } from '@/queries/ssl.query-options';
+import { domainQueryKeys } from '@/queries/domain.query-options';
 
 export default function SSL() {
   const { t } = useTranslation();
@@ -37,10 +39,12 @@ export default function SSL() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         onSuccess={() => {
-          // Invalidate SSL certificates list to refresh
           queryClient.invalidateQueries({ queryKey: sslQueryKeys.lists() });
+          queryClient.invalidateQueries({ queryKey: domainQueryKeys.lists() });
         }}
       />
+
+      <AcmeSettingsCard />
 
       {/* Fast-loading stats data - loaded immediately via route loader */}
       <Suspense fallback={

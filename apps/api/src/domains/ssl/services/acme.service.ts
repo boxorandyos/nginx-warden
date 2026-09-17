@@ -249,7 +249,12 @@ export class AcmeService {
       const isECC = fs.existsSync(eccDir);
       const provider = options.provider || this.defaultCA;
 
-      if (provider === 'zerossl' && options.eabKid && options.eabHmacKey) {
+      if (provider === 'zerossl') {
+        if (!options.eabKid || !options.eabHmacKey) {
+          throw new Error(
+            'ZeroSSL requires External Account Binding (EAB) credentials. Add the EAB Key ID and HMAC key on the SSL page, or renew/issue with Let\'s Encrypt instead.'
+          );
+        }
         await this.registerZeroSslAccount(
           acmeScript,
           options.email,

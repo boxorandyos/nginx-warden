@@ -101,8 +101,8 @@ export const useIssueAutoSSL = () => {
     ...sslMutationOptions.issueAuto,
     onSuccess: (data: SSLCertificate) => {
       sslMutationOptions.issueAuto.onSuccess?.(data);
-      // Invalidate SSL certificates list to refresh
       queryClient.invalidateQueries({ queryKey: sslQueryKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: ['domains'] });
     },
   });
 };
@@ -114,8 +114,8 @@ export const useUploadManualSSL = () => {
     ...sslMutationOptions.uploadManual,
     onSuccess: (data: SSLCertificate) => {
       sslMutationOptions.uploadManual.onSuccess?.(data);
-      // Invalidate SSL certificates list to refresh
       queryClient.invalidateQueries({ queryKey: sslQueryKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: ['domains'] });
     },
   });
 };
@@ -142,10 +142,10 @@ export const useDeleteSSLCertificate = () => {
     ...sslMutationOptions.delete,
     onSuccess: (_, id) => {
       sslMutationOptions.delete.onSuccess?.();
-      // Remove the specific SSL certificate from cache
       queryClient.removeQueries({ queryKey: sslQueryKeys.detail(id) });
-      // Invalidate SSL certificates list to refresh
       queryClient.invalidateQueries({ queryKey: sslQueryKeys.lists() });
+      // Domain must reappear in the "Add Certificate" domain picker
+      queryClient.invalidateQueries({ queryKey: ['domains'] });
     },
   });
 };
