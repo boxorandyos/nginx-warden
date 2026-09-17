@@ -360,15 +360,27 @@ if [ -f "$PROJECT_DIR/config/nginx.conf" ]; then
             error "Nginx configuration test failed. Previous config restored if backup existed. Check logs: tail -f $LOG_FILE"
         fi
     fi
-    systemctl reload nginx || error "Failed to reload nginx"
-    log "✓ Nginx reloaded"
+    # reload fails when nginx is inactive (common after earlier failed updates). Fall back to start/restart.
+    if systemctl is-active --quiet nginx; then
+        if systemctl reload nginx >> "$LOG_FILE" 2>&1; then
+            log "✓ Nginx reloaded"
+        else
+            warn "systemctl reload nginx failed — attempting restart"
+            systemctl restart nginx >> "$LOG_FILE" 2>&1 || error "Failed to restart nginx after reload failure. Check: systemctl status nginx; journalctl -u nginx -n 50"
+            log "✓ Nginx restarted"
+        fi
+    else
+        warn "nginx is not active — starting instead of reload"
+        systemctl start nginx >> "$LOG_FILE" 2>&1 || error "Failed to start nginx. Check: systemctl status nginx; journalctl -u nginx -n 50"
+        log "✓ Nginx started"
+    fi
 else
     error "Nginx config not found in $PROJECT_DIR/config/nginx.conf"
 fi
 
 # Ensure nginx is running
 if ! systemctl is-active --quiet nginx; then
-    systemctl start nginx || error "Failed to start nginx"
+    systemctl start nginx >> "$LOG_FILE" 2>&1 || error "Failed to start nginx"
 fi
 log "✓ Nginx is running"
 

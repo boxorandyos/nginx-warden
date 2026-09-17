@@ -574,19 +574,27 @@ fi
 if nginx -t >> "$LOG_FILE" 2>&1; then
     log "✓ Nginx configuration test passed"
     
-    # Reload nginx to apply changes
-    if systemctl reload nginx >> "$LOG_FILE" 2>&1; then
-        log "✓ Nginx configuration reloaded successfully"
+    if systemctl is-active --quiet nginx; then
+        if systemctl reload nginx >> "$LOG_FILE" 2>&1; then
+            log "✓ Nginx configuration reloaded successfully"
+        else
+            warn "Failed to reload Nginx, attempting restart"
+            systemctl restart nginx >> "$LOG_FILE" 2>&1 || warn "Failed to restart Nginx"
+        fi
     else
-        warn "Failed to reload Nginx, attempting restart"
-        systemctl restart nginx >> "$LOG_FILE" 2>&1
+        warn "nginx is not active — starting"
+        systemctl start nginx >> "$LOG_FILE" 2>&1 || warn "Failed to start Nginx"
     fi
 else
     warn "Nginx configuration test failed — retrying after missing-cert repair"
     bash "${SCRIPT_DIR}/repair-nginx-missing-certs.sh" >> "$LOG_FILE" 2>&1 || true
     if nginx -t >> "$LOG_FILE" 2>&1; then
         log "✓ Nginx configuration test passed after cert repair"
-        systemctl reload nginx >> "$LOG_FILE" 2>&1 || systemctl restart nginx >> "$LOG_FILE" 2>&1 || true
+        if systemctl is-active --quiet nginx; then
+            systemctl reload nginx >> "$LOG_FILE" 2>&1 || systemctl restart nginx >> "$LOG_FILE" 2>&1 || true
+        else
+            systemctl start nginx >> "$LOG_FILE" 2>&1 || true
+        fi
     else
     warn "Nginx configuration test failed, reverting to backup"
     cp -f "${BACKUP_FILE}" /etc/nginx/nginx.conf
