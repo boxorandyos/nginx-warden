@@ -112,7 +112,11 @@ const fetchAnalytics = async <T>(
   endpoint: string,
   params?: Record<string, any>
 ): Promise<T> => {
-  const response = await api.get(`/dashboard/analytics/${endpoint}`, { params });
+  // Log analytics can take a few seconds on busy hosts; keep under axios default 25s
+  const response = await api.get(`/dashboard/analytics/${endpoint}`, {
+    params,
+    timeout: 20_000,
+  });
   return response.data.data;
 };
 
