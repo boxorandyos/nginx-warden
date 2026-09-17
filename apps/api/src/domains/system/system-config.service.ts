@@ -10,6 +10,7 @@ import {
   writePortalHostsFile,
 } from './portal-access-sync.service';
 import { applyKeepalivedFromDatabase } from './keepalived-sync.service';
+import { normalizePortalOrigin } from './portal-origin.util';
 
 const execAsync = promisify(exec);
 
@@ -49,29 +50,23 @@ export class SystemConfigService {
 
   /**
    * Portal UI base URLs (CORS + Vite allowedHosts). Each value must be a valid http(s) origin (e.g. http://10.0.0.1:8088).
+   * Trailing slashes and paths are stripped so they match browser Origin headers.
    */
   async updatePortalAccessOrigins(rawOrigins: unknown): Promise<SystemConfig> {
     if (!Array.isArray(rawOrigins)) {
       throw new ValidationError('portalAccessOrigins must be an array of URL strings');
     }
-    const normalized = [
-      ...new Set(
-        rawOrigins
-          .filter((x): x is string => typeof x === 'string')
-          .map((s) => s.trim())
-          .filter((s) => s.length > 0)
-      ),
-    ];
-
-    for (const o of normalized) {
-      let u: URL;
-      try {
-        u = new URL(o);
-      } catch {
-        throw new ValidationError(`Invalid URL: ${o}`);
+    const normalized: string[] = [];
+    const seen = new Set<string>();
+    for (const x of rawOrigins) {
+      if (typeof x !== 'string') continue;
+      const origin = normalizePortalOrigin(x);
+      if (!origin) {
+        throw new ValidationError(`Invalid URL: ${x}`);
       }
-      if (u.protocol !== 'http:' && u.protocol !== 'https:') {
-        throw new ValidationError(`URL must use http or https: ${o}`);
+      if (!seen.has(origin)) {
+        seen.add(origin);
+        normalized.push(origin);
       }
     }
 

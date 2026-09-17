@@ -37,7 +37,9 @@ app.use(cors({
       callback(null, true);
       return;
     }
-    if (allowList.includes(requestOrigin)) {
+    // Browsers never send a trailing slash; normalize both sides for safety
+    const origin = requestOrigin.replace(/\/$/, '');
+    if (allowList.includes(origin) || allowList.includes(requestOrigin)) {
       callback(null, requestOrigin);
       return;
     }

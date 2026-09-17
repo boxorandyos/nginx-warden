@@ -14,6 +14,7 @@ import {
   validateCustomLocations,
 } from './custom-locations.util';
 import { http2ListenModeFromNginxV, type Http2ListenMode } from './nginx-http2.util';
+import { getMergedCorsOrigins } from '../../system/portal-access-sync.service';
 
 const execAsync = promisify(exec);
 
@@ -734,8 +735,10 @@ ${healthCheckSettings}`;
    * Generate custom location blocks
    */
   private generateCustomLocations(domain: DomainWithRelations): string {
+    const portalApiBlock = this.generateWardenPortalApiLocation(domain);
+
     if (!domain.customLocations || typeof domain.customLocations !== 'object') {
-      return '';
+      return portalApiBlock;
     }
 
     try {
@@ -744,14 +747,14 @@ ${healthCheckSettings}`;
         : (domain.customLocations as any).locations || [];
 
       if (locations.length === 0) {
-        return '';
+        return portalApiBlock;
       }
 
       const ordered = sortLocationsLongestFirst(
         locations.filter((loc: any) => loc && loc.path)
       );
 
-      return ordered.map((loc: any) => {
+      const customBlocks = ordered.map((loc: any) => {
         const { path: locPathRaw, useUpstream, upstreamType, upstreams, config } = loc;
         const locPath = locPathRaw;
         const locationMatch = nginxLocationMatch(locPath);
@@ -858,10 +861,84 @@ ${healthCheckSettings}`;
         logger.warn(`Custom location ${locPath} has no valid configuration, skipping`);
         return '';
       }).filter((loc: string) => loc !== '').join('\n');
+
+      return `${portalApiBlock}${customBlocks}`;
     } catch (error) {
       logger.error('Failed to generate custom locations:', error);
+      return portalApiBlock;
+    }
+  }
+
+  /**
+   * When this domain is the admin portal (hostname in portal access origins, or
+   * upstream is local UI :8088), proxy /api → Warden backend so the SPA can use
+   * same-origin /api instead of :3001 (not exposed through the reverse proxy).
+   */
+  private generateWardenPortalApiLocation(domain: DomainWithRelations): string {
+    if (!this.shouldExposeWardenApiPath(domain)) {
       return '';
     }
+
+    const existing = Array.isArray(domain.customLocations)
+      ? domain.customLocations
+      : (domain.customLocations as any)?.locations || [];
+    if (
+      Array.isArray(existing) &&
+      existing.some((loc: any) => {
+        const p = String(loc?.path || '')
+          .replace(/\/+$/, '')
+          .toLowerCase();
+        return p === '/api';
+      })
+    ) {
+      return '';
+    }
+
+    const apiPort = parseInt(process.env.WARDEN_API_PORT || process.env.PORT || '3001', 10) || 3001;
+    return `
+    # Nginx Warden admin API (same-origin /api for reverse-proxied UI)
+    location ^~ /api {
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization $http_authorization;
+        proxy_pass http://127.0.0.1:${apiPort};
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+`;
+  }
+
+  private shouldExposeWardenApiPath(domain: DomainWithRelations): boolean {
+    try {
+      const origins = getMergedCorsOrigins();
+      if (
+        origins.some((o) => {
+          try {
+            return new URL(o).hostname.toLowerCase() === domain.name.toLowerCase();
+          } catch {
+            return false;
+          }
+        })
+      ) {
+        return true;
+      }
+    } catch {
+      /* cache may be empty during early boot */
+    }
+
+    const uiPort = parseInt(process.env.WARDEN_UI_PORT || '8088', 10) || 8088;
+    return (domain.upstreams || []).some((u) => {
+      const host = String(u.host || '').toLowerCase();
+      const local =
+        host === '127.0.0.1' ||
+        host === 'localhost' ||
+        host === '::1' ||
+        host === '[::1]';
+      return local && Number(u.port) === uiPort;
+    });
   }
 
   /**

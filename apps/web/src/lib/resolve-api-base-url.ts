@@ -1,12 +1,12 @@
 /**
  * Resolves the backend API base URL (…/api).
  *
- * **Default (browser):** same hostname (or IPv6 literal) as the current page + `VITE_API_PORT` (default 3001).
- * This works for private IP, LAN, DNS, or public IP — even when an old build baked in a different
- * `VITE_API_URL` (e.g. public IP only).
+ * **Default (browser):**
+ * - Page on :80 / :443 (or default ports) → same-origin `/api` (reverse-proxy friendly).
+ * - Page on any other port (e.g. :8088) → same hostname + `VITE_API_PORT` (default 3001).
  *
  * **Fixed API host:** set `VITE_API_USE_FIXED=true` at build time and `VITE_API_URL` to the real API
- * origin (e.g. separate subdomain or reverse-proxy URL).
+ * origin (e.g. separate subdomain).
  */
 export function resolveApiBaseUrl(): string {
   const useFixed =
@@ -20,6 +20,12 @@ export function resolveApiBaseUrl(): string {
   if (typeof window !== 'undefined' && window.location?.href && !useFixed) {
     try {
       const u = new URL(window.location.href);
+      if (isReverseProxiedPage(u)) {
+        // https://warden.example.com → https://warden.example.com/api
+        // (nginx must proxy /api to the backend; see portal domain config)
+        return `${u.protocol}//${u.host}/api`.replace(/\/$/, '');
+      }
+      // Direct UI access: http://10.0.0.5:8088 → http://10.0.0.5:3001/api
       u.port = apiPort;
       u.pathname = '/api';
       u.search = '';
@@ -35,6 +41,18 @@ export function resolveApiBaseUrl(): string {
   }
 
   return `http://localhost:${apiPort}/api`;
+}
+
+/** True when the page is served on default HTTP/HTTPS ports (typical reverse-proxy). */
+export function isReverseProxiedPage(u: Pick<URL, 'protocol' | 'port'>): boolean {
+  const port = u.port || '';
+  if (u.protocol === 'https:') {
+    return port === '' || port === '443';
+  }
+  if (u.protocol === 'http:') {
+    return port === '' || port === '80';
+  }
+  return false;
 }
 
 function normalizeApiBase(url: string): string {
