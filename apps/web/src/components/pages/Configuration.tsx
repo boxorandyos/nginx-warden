@@ -6,14 +6,6 @@ import { useAuth } from '@/auth';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
@@ -30,6 +22,7 @@ import {
 import { toast } from 'sonner';
 import { systemConfigService } from '@/services/system-config.service';
 import { systemConfigQueryOptions } from '@/queries/system-config.query-options';
+import { AcmeSettingsCard } from '@/components/ssl/AcmeSettingsCard';
 
 export default function Configuration() {
   const { t } = useTranslation();
@@ -41,9 +34,6 @@ export default function Configuration() {
   const config = data?.data;
 
   const [text, setText] = useState('');
-  const [acmeProvider, setAcmeProvider] = useState<'letsencrypt' | 'zerossl'>('letsencrypt');
-  const [eabKid, setEabKid] = useState('');
-  const [eabHmac, setEabHmac] = useState('');
   /** Poll server log after scheduling an update until completion or timeout */
   const [pollUpdateLog, setPollUpdateLog] = useState(false);
   const logScrollRef = useRef<HTMLDivElement>(null);
@@ -52,14 +42,6 @@ export default function Configuration() {
     const origins = config?.portalAccessOrigins ?? [];
     setText(origins.join('\n'));
   }, [config?.portalAccessOrigins]);
-
-  useEffect(() => {
-    if (config?.acmeDefaultProvider === 'zerossl') {
-      setAcmeProvider('zerossl');
-    } else if (config?.acmeDefaultProvider) {
-      setAcmeProvider('letsencrypt');
-    }
-  }, [config?.acmeDefaultProvider]);
 
   /** Poll log on an interval while this page is open (admin) so the tail updates without clicking Refresh */
   const UPDATE_LOG_INTERVAL_MS = 1000;
@@ -140,31 +122,6 @@ export default function Configuration() {
   const handleSave = () => {
     saveMutation.mutate();
   };
-
-  const acmeMutation = useMutation({
-    mutationFn: () =>
-      systemConfigService.updateAcme({
-        acmeDefaultProvider: acmeProvider,
-        zerosslEabKid: eabKid.trim() || undefined,
-        zerosslEabHmacKey: eabHmac.trim() || undefined,
-      }),
-    onSuccess: (res) => {
-      if (res.success) {
-        toast.success(t('configuration.acme.toastSaved'));
-        setEabHmac('');
-        queryClient.invalidateQueries({ queryKey: ['system-config'] });
-      } else {
-        toast.error(res.message || t('configuration.acme.toastFailed'));
-      }
-    },
-    onError: (err: unknown) => {
-      const msg =
-        err && typeof err === 'object' && 'response' in err
-          ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
-          : undefined;
-      toast.error(msg || t('configuration.acme.toastFailed'));
-    },
-  });
 
   const systemUpdateMutation = useMutation({
     mutationFn: () => systemConfigService.runSystemUpdate(),
@@ -367,6 +324,8 @@ export default function Configuration() {
         </CardContent>
       </Card>
 
+      <AcmeSettingsCard />
+
       <Card>
         <CardHeader>
           <CardTitle>{t('configuration.portalAccess.title')}</CardTitle>
@@ -390,72 +349,6 @@ export default function Configuration() {
             <AlertTitle>{t('configuration.portalAccess.restartTitle')}</AlertTitle>
             <AlertDescription className="text-sm">{t('configuration.portalAccess.restartHint')}</AlertDescription>
           </Alert>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('configuration.acme.title')}</CardTitle>
-          <CardDescription>{t('configuration.acme.description')}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>{t('configuration.acme.defaultProvider')}</Label>
-            <Select
-              value={acmeProvider}
-              onValueChange={(v) => setAcmeProvider(v as 'letsencrypt' | 'zerossl')}
-              disabled={!isAdmin}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="letsencrypt">Let's Encrypt</SelectItem>
-                <SelectItem value="zerossl">ZeroSSL</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-sm text-muted-foreground">{t('configuration.acme.defaultProviderHint')}</p>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="zerossl-eab-kid">{t('configuration.acme.eabKid')}</Label>
-            <Input
-              id="zerossl-eab-kid"
-              value={eabKid}
-              onChange={(e) => setEabKid(e.target.value)}
-              placeholder={
-                config?.zerosslEabConfigured
-                  ? t('configuration.acme.eabConfigured')
-                  : t('configuration.acme.eabKidPlaceholder')
-              }
-              disabled={!isAdmin}
-              autoComplete="off"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="zerossl-eab-hmac">{t('configuration.acme.eabHmac')}</Label>
-            <Input
-              id="zerossl-eab-hmac"
-              type="password"
-              value={eabHmac}
-              onChange={(e) => setEabHmac(e.target.value)}
-              placeholder={t('configuration.acme.eabHmacPlaceholder')}
-              disabled={!isAdmin}
-              autoComplete="off"
-            />
-            <p className="text-sm text-muted-foreground">{t('configuration.acme.eabHint')}</p>
-          </div>
-          <Button
-            type="button"
-            onClick={() => acmeMutation.mutate()}
-            disabled={!isAdmin || acmeMutation.isPending}
-          >
-            {acmeMutation.isPending ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="mr-2 h-4 w-4" />
-            )}
-            {t('configuration.acme.save')}
-          </Button>
         </CardContent>
       </Card>
     </div>

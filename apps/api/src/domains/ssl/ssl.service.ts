@@ -16,6 +16,7 @@ import {
   UpdateSSLDto,
 } from './dto';
 import {
+  AcmeProviderId,
   inferProviderFromIssuer,
   isAcmeRenewable,
   normalizeAcmeProvider,
@@ -582,22 +583,49 @@ export class SSLService {
     }
 
     const force = options.force !== false;
-    const provider =
+    let provider: AcmeProviderId =
       storedProvider || inferProviderFromIssuer(cert.issuer) || acmeService.getDefaultCA();
+
+    const systemConfig = await prisma.systemConfig.findFirst();
+    const eabKid = systemConfig?.zerosslEabKid || undefined;
+    const eabHmacKey = systemConfig?.zerosslEabHmacKey || undefined;
+    const hasZerosslEab = Boolean(eabKid && eabHmacKey);
+
+    // Pre-update installs issued via ZeroSSL; without EAB renew cannot succeed — use Let's Encrypt
+    if (provider === 'zerossl' && !hasZerosslEab) {
+      logger.warn(
+        `ZeroSSL EAB not configured; renewing ${cert.domain.name} with Let's Encrypt instead`
+      );
+      provider = 'letsencrypt';
+    }
+
+    if (provider === 'zerossl' && !hasZerosslEab) {
+      throw new Error(
+        'ZeroSSL requires EAB credentials. Add them on the SSL page (Certificate authority) or under Fleet → Configuration, or re-issue with Let\'s Encrypt.'
+      );
+    }
 
     logger.info(
       `Renewing ${provider} certificate for ${cert.domain.name} (force=${force})`
     );
 
-    const systemConfig = await prisma.systemConfig.findFirst();
-
     try {
-      const certFiles = await acmeService.renewCertificate(cert.domain.name, {
-        provider,
-        force,
-        eabKid: systemConfig?.zerosslEabKid || undefined,
-        eabHmacKey: systemConfig?.zerosslEabHmacKey || undefined,
-      });
+      // Force renew / CA switch: re-issue is more reliable than acme.sh --renew across servers
+      const certFiles = force
+        ? await acmeService.issueCertificate({
+            domain: cert.domain.name,
+            email: undefined,
+            provider,
+            force: true,
+            eabKid,
+            eabHmacKey,
+          })
+        : await acmeService.renewCertificate(cert.domain.name, {
+            provider,
+            force,
+            eabKid,
+            eabHmacKey,
+          });
 
       const certInfo = await acmeService.parseCertificate(certFiles.certificate);
 

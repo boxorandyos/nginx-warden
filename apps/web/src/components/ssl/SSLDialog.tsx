@@ -48,17 +48,28 @@ export function SSLDialog({ open, onOpenChange, onSuccess, defaultDomainId, defa
     chain: '',
   });
 
-  // Use TanStack Query to fetch domains
-  const { data: domainsResponse, isLoading: domainsLoading, error: domainsError } = useDomains();
-  
-  // Filter domains without SSL certificate - check both sslCertificate object and sslEnabled flag
-  const domainsWithoutSSL = domainsResponse?.data?.filter(d => !d.sslCertificate) || [];
+  // Fetch a large page — default API limit is 10, which hid domains after deletes
+  const {
+    data: domainsResponse,
+    isLoading: domainsLoading,
+    error: domainsError,
+    refetch: refetchDomains,
+  } = useDomains({ page: 1, limit: 1000, sortBy: 'name', sortOrder: 'asc' });
+
+  useEffect(() => {
+    if (open) {
+      void refetchDomains();
+    }
+  }, [open, refetchDomains]);
+
+  // Domains without an SSL certificate row (deleted certs reappear here)
+  const eligibleDomains = domainsResponse?.data?.filter((d) => !d.sslCertificate) || [];
   const domainOptions =
     defaultDomainId &&
     defaultDomainName &&
-    !domainsWithoutSSL.some((d) => d.id === defaultDomainId)
-      ? [{ id: defaultDomainId, name: defaultDomainName } as Domain, ...domainsWithoutSSL]
-      : domainsWithoutSSL;
+    !eligibleDomains.some((d) => d.id === defaultDomainId)
+      ? [{ id: defaultDomainId, name: defaultDomainName } as Domain, ...eligibleDomains]
+      : eligibleDomains;
 
   const issueAutoSSL = useIssueAutoSSL();
   const uploadManualSSL = useUploadManualSSL();
@@ -369,7 +380,7 @@ export function SSLDialog({ open, onOpenChange, onSuccess, defaultDomainId, defa
                 <p className="text-sm text-muted-foreground">
                   Automatically obtain and renew SSL certificates. Choose a certificate authority
                   per certificate. Let's Encrypt needs no extra credentials; ZeroSSL requires EAB
-                  keys under Configuration.
+                  keys (configure them on this SSL page or under Fleet → Configuration).
                 </p>
               </div>
 
