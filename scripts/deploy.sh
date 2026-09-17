@@ -564,6 +564,12 @@ if ! cp -f config/nginx.conf /etc/nginx/nginx.conf; then
     error "Failed to copy custom Nginx configuration"
 fi
 
+# Disable any site configs pointing at missing certificate files (e.g. cert deleted in UI)
+if [[ -f "${SCRIPT_DIR}/repair-nginx-missing-certs.sh" ]]; then
+    chmod +x "${SCRIPT_DIR}/repair-nginx-missing-certs.sh" 2>/dev/null || true
+    bash "${SCRIPT_DIR}/repair-nginx-missing-certs.sh" >> "$LOG_FILE" 2>&1 || warn "repair-nginx-missing-certs.sh reported an issue"
+fi
+
 # Test nginx configuration
 if nginx -t >> "$LOG_FILE" 2>&1; then
     log "✓ Nginx configuration test passed"
@@ -576,6 +582,12 @@ if nginx -t >> "$LOG_FILE" 2>&1; then
         systemctl restart nginx >> "$LOG_FILE" 2>&1
     fi
 else
+    warn "Nginx configuration test failed — retrying after missing-cert repair"
+    bash "${SCRIPT_DIR}/repair-nginx-missing-certs.sh" >> "$LOG_FILE" 2>&1 || true
+    if nginx -t >> "$LOG_FILE" 2>&1; then
+        log "✓ Nginx configuration test passed after cert repair"
+        systemctl reload nginx >> "$LOG_FILE" 2>&1 || systemctl restart nginx >> "$LOG_FILE" 2>&1 || true
+    else
     warn "Nginx configuration test failed, reverting to backup"
     cp -f "${BACKUP_FILE}" /etc/nginx/nginx.conf
     
@@ -584,6 +596,7 @@ else
     nginx -t 2>&1 | tee -a "$LOG_FILE"
     
     warn "Reverted to original configuration"
+    fi
 fi
 
 log "✓ Nginx running"
