@@ -28,7 +28,7 @@ export class NginxReloadService {
    */
   private async testConfig(): Promise<{ success: boolean; error?: string }> {
     try {
-      await execAsync('nginx -t');
+      await execAsync('nginx -t', { timeout: 15000 });
       logger.info('✅ Nginx configuration test passed');
       return { success: true };
     } catch (error: any) {
@@ -57,13 +57,13 @@ export class NginxReloadService {
   private async attemptReload(): Promise<boolean> {
     try {
       logger.info('🔁 Attempting graceful nginx reload...');
-      await execAsync('nginx -t'); // check config before reload
+      await execAsync('nginx -t', { timeout: 15000 }); // check config before reload
 
       try {
-        await execAsync('nginx -s reload');
+        await execAsync('nginx -s reload', { timeout: 15000 });
       } catch (e) {
         logger.warn('⚠️ Reload failed, forcing restart instead...');
-        await execAsync('rm -f /var/run/nginx.pid && nginx');
+        await execAsync('rm -f /var/run/nginx.pid && nginx', { timeout: 15000 });
       }
 
       // wait a little for reload to apply
@@ -95,10 +95,10 @@ export class NginxReloadService {
       await execAsync('rm -f /var/run/nginx.pid || true');
 
       // Verify config
-      await execAsync('nginx -t');
+      await execAsync('nginx -t', { timeout: 15000 });
 
       // Start nginx fresh
-      await execAsync('nginx');
+      await execAsync('nginx', { timeout: 15000 });
 
       // Give it time to come up
       await new Promise((r) => setTimeout(r, 1000));

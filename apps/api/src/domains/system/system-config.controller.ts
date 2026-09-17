@@ -116,6 +116,24 @@ export const updateKeepalived = async (req: AuthRequest, res: Response): Promise
 };
 
 /**
+ * ACME defaults (Let's Encrypt / ZeroSSL) and ZeroSSL EAB credentials.
+ */
+export const updateAcmeSettings = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const config = await systemConfigService.updateAcmeSettings(req.body);
+    logger.info('ACME settings updated', { userId: req.user?.userId });
+    ResponseUtil.success(res, config, 'ACME settings updated');
+  } catch (error: unknown) {
+    logger.error('Update ACME settings error:', error);
+    if (error instanceof ValidationError) {
+      ResponseUtil.error(res, error.message, 400);
+      return;
+    }
+    ResponseUtil.error(res, 'Failed to update ACME settings', 500);
+  }
+};
+
+/**
  * Get system configuration
  */
 export const getSystemConfig = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -142,6 +160,15 @@ export const updateNodeMode = async (req: AuthRequest, res: Response): Promise<v
       configId: config.id,
     });
 
+    try {
+      const { slaveSyncSchedulerService } = await import(
+        '../cluster/services/slave-sync-scheduler.service'
+      );
+      await slaveSyncSchedulerService.restart();
+    } catch (e) {
+      logger.warn('Failed to refresh slave sync scheduler after mode change', e);
+    }
+
     ResponseUtil.success(res, config, `Node mode changed to ${nodeMode}`);
   } catch (error: any) {
     logger.error('Update node mode error:', error);
@@ -160,12 +187,13 @@ export const updateNodeMode = async (req: AuthRequest, res: Response): Promise<v
  */
 export const connectToMaster = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { masterHost, masterPort, masterApiKey } = req.body;
+    const { masterHost, masterPort, masterApiKey, syncInterval } = req.body;
 
     const config = await systemConfigService.connectToMaster(
       masterHost,
       masterPort,
-      masterApiKey
+      masterApiKey,
+      syncInterval
     );
 
     logger.info('Successfully connected to master', {

@@ -173,6 +173,12 @@ enum SSLStatus {
   expired
 }
 
+/// ACME certificate authority used to issue/renew a certificate
+enum AcmeProvider {
+  letsencrypt
+  zerossl
+}
+
 /// Per-vhost ModSecurity engine mode (LibModSecurity SecRuleEngine)
 enum ModsecEngineMode {
   On
@@ -287,6 +293,9 @@ model SSLCertificate {
   validTo   DateTime
   autoRenew Boolean   @default(true)
   status    SSLStatus @default(valid)
+
+  /// CA used for issue/renew when autoRenew is true. Null for manual uploads.
+  acmeProvider AcmeProvider?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -711,6 +720,12 @@ model SystemConfig {
   keepalivedPriorityMaster Int    @default(150)
   /// Warden slave node = lower priority (typ. BACKUP state)
   keepalivedPriorityBackup Int    @default(100)
+
+  /// Default ACME CA for newly issued certificates
+  acmeDefaultProvider AcmeProvider @default(letsencrypt)
+  /// ZeroSSL External Account Binding (required by ZeroSSL ACME)
+  zerosslEabKid     String?
+  zerosslEabHmacKey String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

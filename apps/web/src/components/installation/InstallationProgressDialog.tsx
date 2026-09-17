@@ -64,10 +64,12 @@ export function InstallationProgressDialog({ open, onOpenChange, onComplete }: I
             if (onComplete) {
               setTimeout(onComplete, 2000);
             }
+            return;
           }
 
           if (installStatus.status === 'failed') {
             setHasError(true);
+            return;
           }
         }
       } catch (error) {
@@ -100,7 +102,7 @@ export function InstallationProgressDialog({ open, onOpenChange, onComplete }: I
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md" onPointerDownOutside={(e) => e.preventDefault()}>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {hasError ? (

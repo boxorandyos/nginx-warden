@@ -50,6 +50,10 @@ router.post(
     body('domainId').notEmpty().withMessage('Domain ID is required'),
     body('email').optional().isEmail().withMessage('Valid email is required'),
     body('autoRenew').optional().isBoolean().withMessage('Auto renew must be boolean'),
+    body('acmeProvider')
+      .optional()
+      .isIn(['letsencrypt', 'zerossl', "Let's Encrypt", 'ZeroSSL'])
+      .withMessage('ACME provider must be letsencrypt or zerossl'),
   ],
   issueAutoSSL
 );

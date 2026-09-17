@@ -108,7 +108,17 @@ export const systemConfigService = {
     changesApplied: number;
     lastSyncAt: string;
   }>> => {
-    const response = await api.post('/system-config/sync', {});
+    const response = await api.post('/system-config/sync', {}, { timeout: 60_000 });
+    return response.data;
+  },
+
+  updateAcme: async (body: {
+    acmeDefaultProvider?: 'letsencrypt' | 'zerossl';
+    zerosslEabKid?: string | null;
+    zerosslEabHmacKey?: string | null;
+    clearZerosslEab?: boolean;
+  }): Promise<ApiResponse<SystemConfig>> => {
+    const response = await api.put('/system-config/acme', body);
     return response.data;
   },
 };

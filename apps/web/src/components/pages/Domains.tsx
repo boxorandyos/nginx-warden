@@ -29,10 +29,10 @@ import {
 } from '@/components/ui/select';
 import { DomainDialogV2 } from '@/components/domains/DomainDialogV2';
 import { InstallationProgressDialog } from '@/components/installation/InstallationProgressDialog';
+import { SSLDialog } from '@/components/ssl/SSLDialog';
 import { toast } from 'sonner';
 import {
-  useSuspenseDomains,
-  useSuspenseInstallationStatus,
+  useInstallationStatus,
   useCreateDomain,
   useUpdateDomain,
   useDeleteDomain,
@@ -40,8 +40,8 @@ import {
   useReloadNginx
 } from '@/queries';
 import { SkeletonTable } from '@/components/ui/skeletons';
-import { useQuery } from '@tanstack/react-query';
-import { domainQueryOptions } from '@/queries/domain.query-options';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { domainQueryOptions, domainQueryKeys } from '@/queries/domain.query-options';
 import {
   createColumnHelper,
   flexRender,
@@ -63,6 +63,7 @@ const columnHelper = createColumnHelper<Domain>();
 function DomainsTable() {
   const { t } = useTranslation();
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [sorting, setSorting] = useState<SortingState>([{ id: 'createdAt', desc: true }]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [pagination, setPagination] = useState<PaginationState>({
@@ -73,11 +74,16 @@ function DomainsTable() {
   const [sslFilter, setSslFilter] = useState<string>('all');
   const [modsecFilter, setModsecFilter] = useState<string>('all');
 
+  useEffect(() => {
+    const handle = window.setTimeout(() => setDebouncedSearch(searchTerm), 300);
+    return () => window.clearTimeout(handle);
+  }, [searchTerm]);
+
   // Build query parameters
   const queryParams = {
     page: pagination.pageIndex + 1,
     limit: pagination.pageSize,
-    search: searchTerm,
+    search: debouncedSearch,
     status: statusFilter === 'all' ? '' : statusFilter,
     sslEnabled: sslFilter === 'all' ? undefined : sslFilter === 'true',
     modsecEnabled: modsecFilter === 'all' ? undefined : modsecFilter === 'true',
@@ -85,7 +91,7 @@ function DomainsTable() {
     sortOrder: (sorting[0]?.desc ? 'desc' : 'asc') as 'asc' | 'desc',
   };
 
-  const { data, isLoading, refetch } = useQuery(domainQueryOptions.all(queryParams));
+  const { data } = useQuery(domainQueryOptions.all(queryParams));
   
   const domains = data?.data || [];
   const paginationInfo = data?.pagination;
@@ -104,7 +110,7 @@ function DomainsTable() {
     
     const newUrl = `${window.location.pathname}${params.toString() ? '?' + params.toString() : ''}`;
     window.history.replaceState({}, '', newUrl);
-  }, [searchTerm, statusFilter, sslFilter, pagination, sorting]);
+  }, [debouncedSearch, statusFilter, sslFilter, pagination, sorting]);
 
   const getStatusBadge = (status: string) => {
     const variants = {
@@ -381,9 +387,13 @@ function DomainsTable() {
 
 // Component for individual domain actions
 function DomainActions() {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const toggleSSL = useToggleDomainSSL();
   const deleteDomain = useDeleteDomain();
   const updateDomain = useUpdateDomain();
+  const [sslDialogOpen, setSslDialogOpen] = useState(false);
+  const [sslDialogDomain, setSslDialogDomain] = useState<{ id: string; name: string } | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
     title: string;
@@ -416,9 +426,9 @@ function DomainActions() {
   const handleToggleSSL = async (domain: any) => {
     const newSSLStatus = !domain.sslEnabled;
     
-    // Check if domain has SSL certificate when enabling
     if (newSSLStatus && !domain.sslCertificate) {
-      toast.error(t('domains.toast.sslNoCert'));
+      setSslDialogDomain({ id: domain.id, name: domain.name });
+      setSslDialogOpen(true);
       return;
     }
 
@@ -485,6 +495,7 @@ function DomainActions() {
   }, []);
 
   return (
+    <>
     <ConfirmDialog
       open={confirmDialog.open}
       onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))}
@@ -493,6 +504,20 @@ function DomainActions() {
       onConfirm={confirmDialog.onConfirm}
       isLoading={toggleSSL.isPending || deleteDomain.isPending}
     />
+    <SSLDialog
+      open={sslDialogOpen}
+      onOpenChange={(open) => {
+        setSslDialogOpen(open);
+        if (!open) setSslDialogDomain(null);
+      }}
+      defaultDomainId={sslDialogDomain?.id}
+      defaultDomainName={sslDialogDomain?.name}
+      onSuccess={() => {
+        queryClient.invalidateQueries({ queryKey: domainQueryKeys.lists() });
+        toast.success(t('domains.toast.sslCertCreated'));
+      }}
+    />
+    </>
   );
 }
 
@@ -506,18 +531,27 @@ export default function Domains() {
   const createDomain = useCreateDomain();
   const updateDomain = useUpdateDomain();
   const reloadNginx = useReloadNginx();
-  const { data: installationStatus } = useSuspenseInstallationStatus();
+  const { data: installationStatus } = useInstallationStatus();
 
-  // Check if installation is needed
+  // Only block the page when an install is actually running or failed — never for "not started"
   useEffect(() => {
-    console.log('[DOMAINS] Installation status:', installationStatus);
-    if (installationStatus.step !== 'completed' && installationStatus.status !== 'success') {
-      console.log('[DOMAINS] Showing installation modal because:', {
-        step: installationStatus.step,
-        status: installationStatus.status,
-        stepNotCompleted: installationStatus.step !== 'completed',
-        statusNotSuccess: installationStatus.status !== 'success'
-      });
+    if (!installationStatus) return;
+    const runningSteps = new Set([
+      'dependencies',
+      'modsecurity_download',
+      'modsecurity_build',
+      'connector_download',
+      'nginx_download',
+      'nginx_build',
+      'modsecurity_config',
+      'nginx_config',
+    ]);
+    const running =
+      installationStatus.status === 'in_progress' ||
+      installationStatus.status === 'running' ||
+      runningSteps.has(String(installationStatus.step || ''));
+    const failed = installationStatus.status === 'failed';
+    if (running || failed) {
       setShowInstallation(true);
     }
   }, [installationStatus]);

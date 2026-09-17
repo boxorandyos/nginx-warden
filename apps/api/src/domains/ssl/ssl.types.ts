@@ -16,6 +16,7 @@ export interface SSLCertificateWithDomain extends SSLCertificate {
  */
 export interface SSLCertificateWithStatus extends SSLCertificateWithDomain {
   daysUntilExpiry: number;
+  acmeRenewable?: boolean;
 }
 
 /**
@@ -38,6 +39,13 @@ export interface AcmeOptions {
   webroot?: string;
   dns?: string;
   standalone?: boolean;
+  /** ACME CA: letsencrypt (default) or zerossl */
+  provider?: 'letsencrypt' | 'zerossl';
+  /** ZeroSSL External Account Binding */
+  eabKid?: string;
+  eabHmacKey?: string;
+  /** Force issuance even if a cert already exists */
+  force?: boolean;
 }
 
 /**
@@ -79,4 +87,5 @@ export const SSL_CONSTANTS = {
   MANUAL_ISSUER: 'Manual Upload',
   // List of issuers that support auto-renewal via ACME
   AUTO_RENEWABLE_ISSUERS: ["Let's Encrypt", 'ZeroSSL'] as string[],
+  ACME_TIMEOUT_MS: 180000,
 } as const;

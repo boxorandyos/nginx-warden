@@ -34,7 +34,16 @@ export const domainQueryOptions = {
   installationStatus: {
     queryKey: ['system', 'installation-status'],
     queryFn: domainService.getInstallationStatus,
-    refetchInterval: 30 * 1000, // Auto-refresh every 30 seconds
+    staleTime: 30 * 1000,
+    retry: 1,
+    refetchInterval: (query: { state: { data?: { step?: string; status?: string } } }) => {
+      const d = query.state.data;
+      if (!d) return 10 * 1000;
+      if (d.step === 'completed' || d.status === 'success' || d.status === 'not_started') {
+        return false;
+      }
+      return 5 * 1000;
+    },
   },
 };
 

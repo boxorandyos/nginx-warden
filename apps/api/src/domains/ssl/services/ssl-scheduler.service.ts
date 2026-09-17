@@ -1,46 +1,59 @@
 import logger from '../../../utils/logger';
 import { sslRepository } from '../ssl.repository';
 import { acmeService } from './acme.service';
-import { SSL_CONSTANTS } from '../ssl.types';
+import {
+  inferProviderFromIssuer,
+  isAcmeRenewable,
+  normalizeAcmeProvider,
+  toPrismaAcmeProvider,
+} from '../ssl-issuer.util';
+import prisma from '../../../config/database';
+import { nginxReloadService } from '../../domains/services/nginx-reload.service';
 
 /**
- * SSL Auto-Renew Scheduler Service
- * Automatically checks and renews SSL certificates that are expiring soon
- * Similar to backup-scheduler but for SSL certificates
+ * SSL Auto-Renew Scheduler
+ * Checks hourly and renews ACME certs that expire within the threshold.
  */
 class SSLSchedulerService {
   private intervalId: NodeJS.Timeout | null = null;
-  private checkIntervalMs: number = 3600000; // Check every 1 hour by default
-  private renewThresholdDays: number = 30; // Renew if cert expires in 30 days or less
+  private checkIntervalMs: number = 3600000;
+  private renewThresholdDays: number = 30;
+  private running = false;
 
-  /**
-   * Check and renew expiring SSL certificates
-   */
   async checkAndRenewExpiringCertificates(): Promise<void> {
+    if (this.running) {
+      logger.info('[Auto-Renew] Previous check still running, skipping this tick');
+      return;
+    }
+    this.running = true;
+
     try {
       logger.info('🔍 Checking for expiring SSL certificates...');
 
-      // Get all SSL certificates
       const certificates = await sslRepository.findAll();
       logger.info(`Found ${certificates.length} SSL certificate(s) in database`);
 
       const now = new Date();
-      const thresholdDate = new Date(now.getTime() + this.renewThresholdDays * 24 * 60 * 60 * 1000);
+      const thresholdDate = new Date(
+        now.getTime() + this.renewThresholdDays * 24 * 60 * 60 * 1000
+      );
+      const systemConfig = await prisma.systemConfig.findFirst();
 
       for (const cert of certificates) {
-        // Skip if autoRenew is disabled
         if (!cert.autoRenew) {
-          logger.info(`⏭️  Certificate ${cert.id} (${cert.domain.name}) has autoRenew disabled, skipping...`);
+          logger.info(
+            `⏭️  Certificate ${cert.id} (${cert.domain.name}) has autoRenew disabled, skipping...`
+          );
           continue;
         }
 
-        // Skip if not an auto-renewable issuer (Let's Encrypt or ZeroSSL)
-        if (!SSL_CONSTANTS.AUTO_RENEWABLE_ISSUERS.includes(cert.issuer)) {
-          logger.info(`⏭️  Certificate ${cert.id} (${cert.domain.name}) has issuer "${cert.issuer}" which doesn't support auto-renewal, skipping...`);
+        if (!isAcmeRenewable(cert.issuer, (cert as any).acmeProvider)) {
+          logger.info(
+            `⏭️  Certificate ${cert.id} (${cert.domain.name}) has issuer "${cert.issuer}" which doesn't support auto-renewal, skipping...`
+          );
           continue;
         }
 
-        // Check if certificate is expiring soon
         if (cert.validTo <= thresholdDate) {
           const daysUntilExpiry = Math.floor(
             (cert.validTo.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
@@ -50,39 +63,66 @@ class SSLSchedulerService {
             `🔄 Certificate for ${cert.domain.name} (issuer: ${cert.issuer}) expires in ${daysUntilExpiry} days, attempting renewal...`
           );
 
-          // Execute renewal asynchronously (don't wait)
-          this.renewCertificate(cert.id, cert.domain.name)
-            .catch(error => {
-              logger.error(`❌ Failed to auto-renew certificate ${cert.id} (${cert.domain.name}):`, error);
+          try {
+            await this.renewCertificate(cert.id, cert.domain.name, {
+              issuer: cert.issuer,
+              acmeProvider: (cert as any).acmeProvider,
+              eabKid: systemConfig?.zerosslEabKid || undefined,
+              eabHmacKey: systemConfig?.zerosslEabHmacKey || undefined,
             });
+          } catch (error) {
+            logger.error(
+              `❌ Failed to auto-renew certificate ${cert.id} (${cert.domain.name}):`,
+              error
+            );
+          }
         } else {
           const daysUntilExpiry = Math.floor(
             (cert.validTo.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
           );
-          logger.info(`✅ Certificate for ${cert.domain.name} (issuer: ${cert.issuer}) is valid for ${daysUntilExpiry} more days`);
+          logger.info(
+            `✅ Certificate for ${cert.domain.name} (issuer: ${cert.issuer}) is valid for ${daysUntilExpiry} more days`
+          );
         }
       }
-      
+
       logger.info('✅ SSL certificate check completed');
     } catch (error) {
       logger.error('❌ Error in checkAndRenewExpiringCertificates:', error);
+    } finally {
+      this.running = false;
     }
   }
 
-  /**
-   * Renew a specific certificate
-   */
-  private async renewCertificate(certId: string, domainName: string): Promise<void> {
+  private async renewCertificate(
+    certId: string,
+    domainName: string,
+    meta: {
+      issuer?: string;
+      acmeProvider?: string | null;
+      eabKid?: string;
+      eabHmacKey?: string;
+    }
+  ): Promise<void> {
     try {
       logger.info(`[Auto-Renew] Starting renewal for ${domainName}`);
 
-      // Use acme.sh to renew the certificate
-      const certFiles = await acmeService.renewCertificate(domainName);
+      const provider =
+        normalizeAcmeProvider(meta.acmeProvider) ||
+        inferProviderFromIssuer(meta.issuer) ||
+        acmeService.getDefaultCA();
 
-      // Parse renewed certificate to get validity dates and details
+      // Our 30-day policy already decided this cert is due; force so acme.sh
+      // does not skip based on its own (often 60-day) remaining window.
+      const certFiles = await acmeService.renewCertificate(domainName, {
+        provider,
+        force: true,
+        eabKid: meta.eabKid,
+        eabHmacKey: meta.eabHmacKey,
+      });
+
       const certInfo = await acmeService.parseCertificate(certFiles.certificate);
 
-      // Update certificate in database
       await sslRepository.update(certId, {
         certificate: certFiles.certificate,
         privateKey: certFiles.privateKey,
@@ -97,13 +137,19 @@ class SSLSchedulerService {
         validFrom: certInfo.validFrom,
         validTo: certInfo.validTo,
         status: 'valid',
+        acmeProvider: toPrismaAcmeProvider(provider),
         updatedAt: new Date(),
       });
 
-      // Update domain SSL expiry
       const cert = await sslRepository.findById(certId);
       if (cert) {
         await sslRepository.updateDomainSSLExpiry(cert.domainId, certInfo.validTo);
+      }
+
+      try {
+        await nginxReloadService.autoReload(true);
+      } catch (reloadError) {
+        logger.warn(`[Auto-Renew] Nginx reload after renew of ${domainName} failed:`, reloadError);
       }
 
       logger.info(
@@ -111,22 +157,21 @@ class SSLSchedulerService {
       );
     } catch (error: any) {
       const errorMsg = error.message || error.toString();
-      
-      // Handle rate limiting - don't mark as failed, just log and retry later
+
       if (errorMsg.includes('Rate limited') || errorMsg.includes('retryafter')) {
-        logger.warn(`[Auto-Renew] ⏳ Certificate renewal for ${domainName} is rate limited, will retry in next cycle`);
-        return; // Don't throw, just return and try again later
+        logger.warn(
+          `[Auto-Renew] ⏳ Certificate renewal for ${domainName} is rate limited, will retry in next cycle`
+        );
+        return;
       }
-      
-      // Handle "not yet due for renewal" - this is normal
+
       if (errorMsg.includes('not yet due for renewal')) {
         logger.info(`[Auto-Renew] ℹ️  Certificate for ${domainName} is not yet due for renewal`);
-        return; // Don't throw, this is expected
+        return;
       }
-      
+
       logger.error(`[Auto-Renew] ❌ Failed to renew certificate for ${domainName}:`, error.message);
-      
-      // Only update status to 'expiring' for real errors
+
       try {
         await sslRepository.update(certId, {
           status: 'expiring',
@@ -140,9 +185,6 @@ class SSLSchedulerService {
     }
   }
 
-  /**
-   * Start the SSL auto-renew scheduler
-   */
   start(checkIntervalMs: number = 3600000, renewThresholdDays: number = 30): NodeJS.Timeout {
     if (this.intervalId) {
       logger.warn('SSL auto-renew scheduler is already running');
@@ -156,14 +198,12 @@ class SSLSchedulerService {
       `Starting SSL auto-renew scheduler (check interval: ${checkIntervalMs}ms, renew threshold: ${renewThresholdDays} days)`
     );
 
-    // Initial check
-    this.checkAndRenewExpiringCertificates().catch(error => {
+    this.checkAndRenewExpiringCertificates().catch((error) => {
       logger.error('Error in initial SSL certificate check:', error);
     });
 
-    // Schedule periodic checks
     this.intervalId = setInterval(() => {
-      this.checkAndRenewExpiringCertificates().catch(error => {
+      this.checkAndRenewExpiringCertificates().catch((error) => {
         logger.error('Error in scheduled SSL certificate check:', error);
       });
     }, checkIntervalMs);
@@ -173,9 +213,6 @@ class SSLSchedulerService {
     return this.intervalId;
   }
 
-  /**
-   * Stop the SSL auto-renew scheduler
-   */
   stop(timerId?: NodeJS.Timeout): void {
     const timerToStop = timerId || this.intervalId;
 
@@ -188,9 +225,6 @@ class SSLSchedulerService {
     }
   }
 
-  /**
-   * Get current scheduler status
-   */
   getStatus(): {
     isRunning: boolean;
     checkIntervalMs: number;
@@ -203,17 +237,12 @@ class SSLSchedulerService {
     };
   }
 
-  /**
-   * Manually trigger a check (for testing)
-   */
   async triggerCheck(): Promise<void> {
     logger.info('Manually triggering SSL certificate check...');
     await this.checkAndRenewExpiringCertificates();
   }
 }
 
-// Export singleton instance
 export const sslSchedulerService = new SSLSchedulerService();
 
-// Named exports for testing
 export { SSLSchedulerService };

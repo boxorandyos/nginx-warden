@@ -13,14 +13,17 @@ export const getSSLSystemInfo = async (req: AuthRequest, res: Response): Promise
   try {
     const defaultCA = acmeService.getDefaultCA();
     const isAcmeInstalled = await acmeService.isAcmeInstalled();
+    const prisma = (await import('../../config/database')).default;
+    const systemConfig = await prisma.systemConfig.findFirst();
 
     res.json({
       success: true,
       data: {
-        defaultCA,
-        caServerOptions: ['zerossl', 'letsencrypt'],
+        defaultCA: systemConfig?.acmeDefaultProvider || defaultCA,
+        caServerOptions: ['letsencrypt', 'zerossl'],
         isAcmeInstalled,
-        supportedIssuers: ['ZeroSSL', "Let's Encrypt"],
+        supportedIssuers: ["Let's Encrypt", 'ZeroSSL'],
+        zerosslEabConfigured: Boolean(systemConfig?.zerosslEabKid && systemConfig?.zerosslEabHmacKey),
       },
     });
   } catch (error) {
@@ -100,6 +103,7 @@ export const issueAutoSSL = async (req: AuthRequest, res: Response): Promise<voi
       domainId: req.body.domainId,
       email: req.body.email,
       autoRenew: req.body.autoRenew ?? true,
+      acmeProvider: req.body.acmeProvider,
     };
 
     try {

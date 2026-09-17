@@ -37,28 +37,14 @@ export function SSLTable() {
     certificateId: '',
   });
 
-  const handleRenew = async (id: string, daysUntilExpiry?: number) => {
+  const handleRenew = async (id: string, _daysUntilExpiry?: number) => {
     try {
       setRenewingId(id);
-      
-      // Check if certificate is eligible for renewal
-      if (daysUntilExpiry !== undefined && daysUntilExpiry > 30) {
-        toast.warning(t('ssl.table.renewNotEligible', { days: daysUntilExpiry }));
-        setRenewingId(null);
-        return;
-      }
-      
       await renewMutation.mutateAsync(id);
       toast.success(t('ssl.table.renewSuccess'));
     } catch (error: any) {
       const errorMessage = error.response?.data?.message || t('ssl.table.renewFailed');
-      
-      // Check if error is about eligibility
-      if (errorMessage.includes('not yet eligible') || errorMessage.includes('less than 30 days')) {
-        toast.warning(errorMessage);
-      } else {
-        toast.error(errorMessage);
-      }
+      toast.error(errorMessage);
     } finally {
       setRenewingId(null);
     }
@@ -162,17 +148,16 @@ export function SSLTable() {
                     <TableCell>{getStatusBadge(cert.status)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        {(cert.issuer === "Let's Encrypt" || cert.issuer === "ZeroSSL") && (
+                        {(cert.acmeRenewable ||
+                          cert.acmeProvider === 'letsencrypt' ||
+                          cert.acmeProvider === 'zerossl' ||
+                          /let.?s encrypt|zerossl|isrg/i.test(cert.issuer || '')) && (
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => handleRenew(cert.id, cert.daysUntilExpiry)}
                             disabled={renewingId === cert.id}
-                            title={
-                              cert.daysUntilExpiry !== undefined && cert.daysUntilExpiry > 30
-                                ? t('ssl.table.renewTitleEarly', { days: cert.daysUntilExpiry })
-                                : t('ssl.table.renewTitle')
-                            }
+                            title={t('ssl.table.renewTitle')}
                           >
                             {renewingId === cert.id ? (
                               <RefreshCw className="h-4 w-4 animate-spin" />

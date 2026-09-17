@@ -26,7 +26,7 @@ export class SystemService {
       if (error.code === 'ENOENT') {
         // File doesn't exist - check if nginx is installed
         try {
-          await execAsync('which nginx');
+          await execAsync('which nginx', { timeout: 5000 });
           // Nginx exists, installation is complete
           return {
             step: 'completed',
@@ -87,7 +87,7 @@ export class SystemService {
 
     // Check if already installed
     try {
-      await execAsync('which nginx');
+      await execAsync('which nginx', { timeout: 5000 });
       throw new Error('Nginx is already installed');
     } catch (error: any) {
       // If the error is not from our check, it means nginx is not installed

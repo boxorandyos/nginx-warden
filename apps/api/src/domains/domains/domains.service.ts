@@ -13,6 +13,7 @@ import {
   NginxReloadResult,
 } from './domains.types';
 import { PaginationMeta } from '../../shared/types/common.types';
+import { validateCustomLocations } from './services/custom-locations.util';
 
 /**
  * Main service orchestrator for domain operations
@@ -48,6 +49,11 @@ export class DomainsService {
     const existingDomain = await domainsRepository.findByName(input.name);
     if (existingDomain) {
       throw new Error('Domain already exists');
+    }
+
+    const locationCheck = validateCustomLocations(input.advancedConfig?.customLocations);
+    if (!locationCheck.valid) {
+      throw new Error(`Invalid path-based routing: ${locationCheck.errors.join('; ')}`);
     }
 
     // Create domain
@@ -213,6 +219,11 @@ export class DomainsService {
     const originalDomain = await domainsRepository.findById(id);
     if (!originalDomain) {
       throw new Error('Domain not found');
+    }
+
+    const locationCheck = validateCustomLocations(input.advancedConfig?.customLocations);
+    if (!locationCheck.valid) {
+      throw new Error(`Invalid path-based routing: ${locationCheck.errors.join('; ')}`);
     }
 
     // Store original data for rollback

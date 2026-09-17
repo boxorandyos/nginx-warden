@@ -5,6 +5,7 @@ import {
   updateNodeMode,
   updatePortalAccessOrigins,
   updateKeepalived,
+  updateAcmeSettings,
   getNetworkInterfaces,
   restartFrontend,
   runSystemUpdate,
@@ -25,6 +26,7 @@ router.get('/', getSystemConfig);
 router.put('/node-mode', updateNodeMode);
 router.put('/portal-access', authorize('admin'), updatePortalAccessOrigins);
 router.put('/keepalived', authorize('admin'), updateKeepalived);
+router.put('/acme', authorize('admin'), updateAcmeSettings);
 router.get('/network-interfaces', authorize('admin'), getNetworkInterfaces);
 router.post('/restart-frontend', authorize('admin'), restartFrontend);
 router.post('/system-update', authorize('admin'), runSystemUpdate);

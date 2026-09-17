@@ -5,4 +5,6 @@ export interface IssueAutoSSLDto {
   domainId: string;
   email?: string;
   autoRenew?: boolean;
+  /** letsencrypt | zerossl — defaults to system ACME setting */
+  acmeProvider?: 'letsencrypt' | 'zerossl' | string;
 }

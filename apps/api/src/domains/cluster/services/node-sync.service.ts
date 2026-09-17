@@ -3,6 +3,7 @@ import logger from '../../../utils/logger';
 import { applyKeepalivedFromDatabase } from '../../system/keepalived-sync.service';
 import { ClusterRepository } from '../cluster.repository';
 import { SyncConfigData, ImportResults } from '../cluster.types';
+import { applySyncedConfigService } from './apply-synced-config.service';
 
 /**
  * Node Sync Service
@@ -88,6 +89,12 @@ export class NodeSyncService {
         logger.warn('[NODE-SYNC] Keepalived apply after import did not succeed', {
           message: kv.message,
         });
+      }
+
+      try {
+        await applySyncedConfigService.applyLocalNginxAndCerts();
+      } catch (applyErr) {
+        logger.warn('[NODE-SYNC] Failed to apply nginx/certs after import', applyErr);
       }
 
       logger.info('[NODE-SYNC] Import completed', results);

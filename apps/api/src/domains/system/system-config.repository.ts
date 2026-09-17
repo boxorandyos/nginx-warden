@@ -204,4 +204,27 @@ export class SystemConfigRepository {
     });
     return config as SystemConfig;
   }
+
+  async updateAcmeSettings(
+    configId: string,
+    data: {
+      acmeDefaultProvider?: 'letsencrypt' | 'zerossl';
+      zerosslEabKid?: string | null;
+      zerosslEabHmacKey?: string | null;
+    }
+  ): Promise<SystemConfig> {
+    const config = await prisma.systemConfig.update({
+      where: { id: configId },
+      data,
+    });
+    return config as SystemConfig;
+  }
+
+  async updateSyncInterval(configId: string, syncInterval: number): Promise<SystemConfig> {
+    const config = await prisma.systemConfig.update({
+      where: { id: configId },
+      data: { syncInterval },
+    });
+    return config as SystemConfig;
+  }
 }

@@ -16,6 +16,7 @@ const api: AxiosInstance = axios.create({
     'Content-Type': 'application/json',
   },
   withCredentials: true,
+  timeout: 25_000,
 });
 
 // Token refresh state management

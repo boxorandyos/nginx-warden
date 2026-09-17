@@ -97,6 +97,21 @@ export interface SyncDomain {
   status: string;
   sslEnabled: boolean;
   modsecEnabled: boolean;
+  realIpEnabled?: boolean;
+  realIpCloudflare?: boolean;
+  realIpCustomCidrs?: string[];
+  hstsEnabled?: boolean;
+  http2Enabled?: boolean;
+  grpcEnabled?: boolean;
+  clientMaxBodySize?: number | null;
+  customLocations?: unknown;
+  limitReqPerMinute?: number;
+  limitReqBurst?: number;
+  limitConnPerAddr?: number;
+  modsecEngineMode?: string;
+  crowdsecNginxEnabled?: boolean;
+  crowdsecAppsecEnabled?: boolean;
+  sslExpiry?: string | null;
   upstreams: SyncUpstream[];
   loadBalancer: SyncLoadBalancer | null;
 }
@@ -137,6 +152,7 @@ export interface SyncSSLCertificate {
   privateKey: string;
   chain: string | null;
   autoRenew: boolean;
+  acmeProvider?: string | null;
   validFrom: string;
   validTo: string;
 }
