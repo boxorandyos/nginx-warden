@@ -28,6 +28,8 @@ let sslSchedulerTimer: NodeJS.Timeout | null = null;
 // app.use(helmet());
 
 // CORS — env origins plus portal access URLs from database (see Configuration page)
+// Denied origins still get OPTIONS 204 from the cors package, but without
+// Access-Control-Allow-Origin → browser reports Axios "Network Error" / blank status.
 app.use(cors({
   origin: (requestOrigin, callback) => {
     const allowList = getMergedCorsOrigins();
@@ -39,6 +41,9 @@ app.use(cors({
       callback(null, requestOrigin);
       return;
     }
+    logger.warn(
+      `CORS denied Origin=${requestOrigin} (allow list: ${allowList.join(', ') || '(empty)'})`
+    );
     callback(null, false);
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -82,11 +87,21 @@ async function startServer(): Promise<void> {
   await loadPortalCorsFromDatabase();
 
   // Repair site configs that still reference deleted SSL files before accepting traffic /
-  // before update.sh runs nginx -t against sites-enabled.
+  // before update.sh runs nginx -t against sites-enabled. Cap wait so a hung nginx
+  // cannot leave the API unbound (UI up, XHR Network Error on :3001).
+  const HEAL_TIMEOUT_MS = 45_000;
   try {
-    const heal = await nginxSslHealService.repair();
+    const heal = await Promise.race([
+      nginxSslHealService.repair(),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error(`SSL/nginx heal timed out after ${HEAL_TIMEOUT_MS}ms`)),
+          HEAL_TIMEOUT_MS
+        )
+      ),
+    ]);
     logger.info(
-      `🩺 SSL/nginx heal: disabled=${heal.disabledSsl}, certs=${heal.certsWritten}, domains=${heal.domainsRegenerated}, reloadOk=${heal.reloadOk}`
+      `🩺 SSL/nginx heal: disabledSsl=${heal.disabledSsl}, certs=${heal.certsWritten}, domains=${heal.domainsRegenerated}, sitesDisabledMissingCert=${heal.sitesDisabledMissingCert}, reloadOk=${heal.reloadOk}`
     );
   } catch (error) {
     logger.error('SSL/nginx heal failed (continuing startup):', error);
