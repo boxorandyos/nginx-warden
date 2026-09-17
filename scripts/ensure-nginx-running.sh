@@ -29,27 +29,46 @@ ensure_nginx_ports_free_or_owned() {
 }
 
 stop_orphan_nginx() {
-    local pidfile="/run/nginx.pid"
+    # Prefer /run (systemd), fall back to /var/run (legacy / symlink)
+    local pidfile=""
+    for f in /run/nginx.pid /var/run/nginx.pid; do
+        if [ -f "$f" ]; then
+            pidfile="$f"
+            break
+        fi
+    done
     local pid=""
 
-    if [ -f "$pidfile" ]; then
+    if [ -n "$pidfile" ]; then
         pid="$(tr -d '[:space:]' < "$pidfile" 2>/dev/null || true)"
     fi
 
+    # nginx -s quit ONLY works when the pidfile exists. After failed updates the
+    # pidfile is often gone while workers still hold :80/:443 — skip quit then
+    # and signal processes directly.
     if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-        if command -v nginx >/dev/null 2>&1; then
-            nginx -s quit 2>/dev/null || true
-        else
-            kill -QUIT "$pid" 2>/dev/null || true
-        fi
-    elif pgrep -x nginx >/dev/null 2>&1; then
-        # No usable pidfile — signal masters via nginx binary if possible
-        if command -v nginx >/dev/null 2>&1; then
-            nginx -s quit 2>/dev/null || true
-        fi
-        # Fallback: QUIT all nginx processes (master + workers exit cleanly)
+        nginx -s quit 2>/dev/null || kill -QUIT "$pid" 2>/dev/null || true
+    fi
+
+    if pgrep -x nginx >/dev/null 2>&1; then
         pkill -QUIT -x nginx 2>/dev/null || true
-    else
+    fi
+
+    # Also signal any nginx PIDs still holding our listen ports (ss may see
+    # workers even when the master name differs slightly)
+    local ss_pids
+    ss_pids="$(ss -tlnp 2>/dev/null | grep -E ':(80|443|13306)\b' | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u || true)"
+    if [ -n "$ss_pids" ]; then
+        local p
+        for p in $ss_pids; do
+            if [ -r "/proc/$p/comm" ] && grep -qx nginx "/proc/$p/comm" 2>/dev/null; then
+                kill -QUIT "$p" 2>/dev/null || true
+            fi
+        done
+    fi
+
+    if ! pgrep -x nginx >/dev/null 2>&1 && [ -z "$(ss -tlnp 2>/dev/null | grep -E ':(80|443|13306)\b' | grep nginx || true)" ]; then
+        rm -f /run/nginx.pid /var/run/nginx.pid 2>/dev/null || true
         return 0
     fi
 
@@ -57,7 +76,7 @@ stop_orphan_nginx() {
     local i
     for i in 1 2 3 4 5 6 7 8 9 10; do
         if ! pgrep -x nginx >/dev/null 2>&1; then
-            rm -f "$pidfile" 2>/dev/null || true
+            rm -f /run/nginx.pid /var/run/nginx.pid 2>/dev/null || true
             return 0
         fi
         sleep 0.5
@@ -70,7 +89,7 @@ stop_orphan_nginx() {
         pkill -KILL -x nginx 2>/dev/null || true
         sleep 0.5
     fi
-    rm -f "$pidfile" 2>/dev/null || true
+    rm -f /run/nginx.pid /var/run/nginx.pid 2>/dev/null || true
 }
 
 _ensure_nginx_log() {
