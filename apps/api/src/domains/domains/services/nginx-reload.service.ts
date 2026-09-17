@@ -86,20 +86,55 @@ export class NginxReloadService {
   }
 
   /**
+   * Stop orphan nginx masters that hold listen ports while systemd is inactive.
+   * Without this, `nginx` / `systemctl start` fails with "Address already in use".
+   */
+  private async clearOrphanNginx(): Promise<void> {
+    try {
+      await execAsync(
+        'bash -c \'' +
+          'if command -v systemctl >/dev/null 2>&1 && ! systemctl is-active --quiet nginx 2>/dev/null; then ' +
+          '  if pgrep -x nginx >/dev/null 2>&1; then ' +
+          '    nginx -s quit 2>/dev/null || pkill -QUIT -x nginx 2>/dev/null || true; ' +
+          '    for i in 1 2 3 4 5 6 7 8 9 10; do pgrep -x nginx >/dev/null 2>&1 || break; sleep 0.5; done; ' +
+          '    pkill -TERM -x nginx 2>/dev/null || true; sleep 0.5; ' +
+          '    pkill -KILL -x nginx 2>/dev/null || true; ' +
+          '    rm -f /run/nginx.pid /var/run/nginx.pid 2>/dev/null || true; ' +
+          '  fi; ' +
+          'fi' +
+          '\'',
+        { timeout: 20000 }
+      );
+    } catch (error: any) {
+      logger.warn('⚠️ Orphan nginx cleanup skipped/failed:', error.message);
+    }
+  }
+
+  /**
    * Attempt to restart nginx safely
    */
   private async attemptRestart(): Promise<boolean> {
     try {
       logger.info('♻️ Restarting nginx...');
 
+      await this.clearOrphanNginx();
+
       // Clean up old PID if exists
-      await execAsync('rm -f /var/run/nginx.pid || true');
+      await execAsync('rm -f /var/run/nginx.pid /run/nginx.pid || true');
 
       // Verify config
       await execAsync('nginx -t', { timeout: 15000 });
 
-      // Start nginx fresh
-      await execAsync('nginx', { timeout: 15000 });
+      // Prefer systemd so the unit tracks the process; fall back to direct start
+      try {
+        await execAsync(
+          'systemctl reset-failed nginx 2>/dev/null; systemctl restart nginx || systemctl start nginx',
+          { timeout: 30000 }
+        );
+      } catch {
+        await this.clearOrphanNginx();
+        await execAsync('nginx', { timeout: 15000 });
+      }
 
       // Give it time to come up
       await new Promise((r) => setTimeout(r, 1000));

@@ -529,7 +529,9 @@ if ! systemctl is-active --quiet nginx-warden-frontend.service; then
 fi
 log "✓ Frontend service started"
 
-# Ensure nginx is running
+# Ensure nginx is running (clears orphan masters that hold :80/:443/:13306)
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/ensure-nginx-running.sh"
 if ! systemctl is-active --quiet nginx; then
     # Fix IPv6 issue if present
     if nginx -t 2>&1 | grep -q "Address family not supported"; then
@@ -539,8 +541,8 @@ if ! systemctl is-active --quiet nginx; then
         sed -i 's/listen \[::\]:80/# listen [::]:80/g' /etc/nginx/sites-enabled/*.conf 2>/dev/null || true
         sed -i 's/listen \[::\]:443/# listen [::]:443/g' /etc/nginx/sites-enabled/*.conf 2>/dev/null || true
     fi
-    
-    systemctl start nginx || error "Failed to start nginx"
+
+    ensure_nginx_running strict || error "Failed to start nginx"
 fi
 # Configure Nginx
 log "Configuring Nginx with custom settings..."
@@ -573,20 +575,13 @@ fi
 # Test nginx configuration
 if nginx -t >> "$LOG_FILE" 2>&1; then
     log "✓ Nginx configuration test passed"
-    
-    # Reload nginx to apply changes
-    if systemctl reload nginx >> "$LOG_FILE" 2>&1; then
-        log "✓ Nginx configuration reloaded successfully"
-    else
-        warn "Failed to reload Nginx, attempting restart"
-        systemctl restart nginx >> "$LOG_FILE" 2>&1
-    fi
+    ensure_nginx_running warn >> "$LOG_FILE" 2>&1 || true
 else
     warn "Nginx configuration test failed — retrying after missing-cert repair"
     bash "${SCRIPT_DIR}/repair-nginx-missing-certs.sh" >> "$LOG_FILE" 2>&1 || true
     if nginx -t >> "$LOG_FILE" 2>&1; then
         log "✓ Nginx configuration test passed after cert repair"
-        systemctl reload nginx >> "$LOG_FILE" 2>&1 || systemctl restart nginx >> "$LOG_FILE" 2>&1 || true
+        ensure_nginx_running warn >> "$LOG_FILE" 2>&1 || true
     else
     warn "Nginx configuration test failed, reverting to backup"
     cp -f "${BACKUP_FILE}" /etc/nginx/nginx.conf
