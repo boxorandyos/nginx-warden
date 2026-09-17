@@ -13,6 +13,7 @@ import {
   sortLocationsLongestFirst,
   validateCustomLocations,
 } from './custom-locations.util';
+import { http2ListenModeFromNginxV, type Http2ListenMode } from './nginx-http2.util';
 
 const execAsync = promisify(exec);
 
@@ -22,6 +23,24 @@ const execAsync = promisify(exec);
 export class NginxConfigService {
   private readonly sitesAvailable = PATHS.NGINX.SITES_AVAILABLE;
   private readonly sitesEnabled = PATHS.NGINX.SITES_ENABLED;
+  private http2ListenModeCache: Http2ListenMode | null = null;
+
+  /**
+   * Prefer `http2 on;` on nginx ≥1.25.1; keep legacy `listen … http2` on older builds.
+   */
+  private async getHttp2ListenMode(): Promise<Http2ListenMode> {
+    if (this.http2ListenModeCache) {
+      return this.http2ListenModeCache;
+    }
+    try {
+      const { stdout, stderr } = await execAsync('nginx -v 2>&1', { timeout: 5000 });
+      this.http2ListenModeCache = http2ListenModeFromNginxV(`${stdout}${stderr}`);
+    } catch {
+      // Prefer legacy listen-flag if version is unknown — works on all supported builds
+      this.http2ListenModeCache = 'listen';
+    }
+    return this.http2ListenModeCache;
+  }
 
   /**
    * Validate nginx configuration syntax
@@ -428,8 +447,11 @@ ${customLocations}
       ? 'add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;'
       : 'add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;';
     
-    // HTTP/2 support (enabled by default, can be disabled)
-    const http2Support = domain.http2Enabled !== false ? ' http2' : '';
+    // HTTP/2: nginx ≥1.25.1 deprecates `listen ... http2` in favor of `http2 on;`
+    const useHttp2 = domain.http2Enabled !== false;
+    const http2Mode = useHttp2 ? await this.getHttp2ListenMode() : null;
+    const listenHttp2Suffix = http2Mode === 'listen' ? ' http2' : '';
+    const http2DirectiveLine = http2Mode === 'directive' ? '\n    http2 on;' : '';
     
     // Generate custom locations if configured
     const customLocations = this.generateCustomLocations(domain);
@@ -442,7 +464,7 @@ ${customLocations}
 
     return `
 server {
-    listen 443 ssl${http2Support};
+    listen 443 ssl${listenHttp2Suffix};${http2DirectiveLine}
     server_name ${domain.name};
 
 ${realIpBlock}

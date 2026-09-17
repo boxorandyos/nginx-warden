@@ -338,6 +338,12 @@ if [[ -f "${SCRIPT_DIR}/repair-nginx-missing-certs.sh" ]]; then
   bash "${SCRIPT_DIR}/repair-nginx-missing-certs.sh" >> "$LOG_FILE" 2>&1 || warn "post-heal cert repair had issues (continuing)"
 fi
 
+# Rewrite deprecated listen … http2 (nginx ≥1.25.1) if any sites still use it
+if [[ -f "${SCRIPT_DIR}/migrate-nginx-http2.sh" ]]; then
+  chmod +x "${SCRIPT_DIR}/migrate-nginx-http2.sh" 2>/dev/null || true
+  bash "${SCRIPT_DIR}/migrate-nginx-http2.sh" >> "$LOG_FILE" 2>&1 || warn "http2 migrate had issues (continuing)"
+fi
+
 # Update nginx configuration (copy backup; restore on failure — never leave nginx without a valid config)
 ORIGINAL_FILE_NGINX="/etc/nginx/nginx.conf"
 BACKUP_FILE="${ORIGINAL_FILE_NGINX}.bak-update-$(date +%Y%m%d%H%M%S)"
