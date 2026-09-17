@@ -65,9 +65,9 @@ export class DashboardAnalyticsService {
       const { stdout } = await execFileAsync(command, args, {
         timeout: timeoutMs,
         maxBuffer: MAX_BUFFER,
-        // Avoid shell metacharacter injection; callers pass fixed args
+        encoding: 'utf8',
       });
-      return typeof stdout === 'string' ? stdout : stdout.toString('utf8');
+      return stdout || '';
     } catch (error: any) {
       // timed out / killed — return empty rather than failing the whole widget
       if (error?.killed || error?.code === 'ETIMEDOUT' || error?.signal === 'SIGTERM') {
