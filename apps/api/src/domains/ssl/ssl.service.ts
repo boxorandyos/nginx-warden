@@ -631,7 +631,7 @@ export class SSLService {
 
     if (provider === 'zerossl' && !hasZerosslEab) {
       throw new Error(
-        'ZeroSSL requires EAB credentials. Add them on the SSL page (Certificate authority) or under Fleet → Configuration, or re-issue with Let\'s Encrypt.'
+        'ZeroSSL requires EAB credentials. Add them under Fleet → Configuration, or re-issue with Let\'s Encrypt.'
       );
     }
 

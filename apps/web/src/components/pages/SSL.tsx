@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Suspense } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { SSLDialog } from '@/components/ssl/SSLDialog';
-import { AcmeSettingsCard } from '@/components/ssl/AcmeSettingsCard';
 import { SSLStats } from './SSLStats';
 import { SSLTable } from './SSLTable';
 import { SkeletonStatsCard, SkeletonTable } from '@/components/ui/skeletons';
@@ -43,8 +42,6 @@ export default function SSL() {
           queryClient.invalidateQueries({ queryKey: domainQueryKeys.lists() });
         }}
       />
-
-      <AcmeSettingsCard />
 
       {/* Fast-loading stats data - loaded immediately via route loader */}
       <Suspense fallback={
