@@ -2,6 +2,23 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+const DEFAULT_CORS_ORIGINS = [
+  'http://localhost:5173',
+  'http://localhost:8088',
+  'http://127.0.0.1:8088',
+];
+
+function parseCorsOrigins(raw: string | undefined): string[] {
+  if (raw == null || !raw.trim()) {
+    return [...DEFAULT_CORS_ORIGINS];
+  }
+  const parsed = raw
+    .split(',')
+    .map((o) => o.trim())
+    .filter((o) => o.length > 0);
+  return parsed.length > 0 ? parsed : [...DEFAULT_CORS_ORIGINS];
+}
+
 export const config = {
   port: parseInt(process.env.PORT || '3001', 10),
   /** Bind address for HTTP server. Use 0.0.0.0 to accept LAN/private IPs (default). Set 127.0.0.1 to loopback-only. */
@@ -20,9 +37,9 @@ export const config = {
   },
   
   cors: {
-    origin:
-      process.env.CORS_ORIGIN?.split(',').map(o => o.trim()) ||
-      ['http://localhost:5173', 'http://localhost:8088', 'http://127.0.0.1:8088'],
+    // Empty CORS_ORIGIN="" must not become [""] (truthy) or every browser Origin is denied
+    // → OPTIONS 204 without ACAO → Axios "Network Error" with blank status.
+    origin: parseCorsOrigins(process.env.CORS_ORIGIN),
   },
   
   security: {

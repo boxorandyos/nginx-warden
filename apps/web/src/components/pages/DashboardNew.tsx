@@ -42,6 +42,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { QueryErrorCard } from "@/components/QueryErrorCard";
 import {
   ChartContainer,
   ChartTooltip,
@@ -874,16 +875,20 @@ export default function DashboardNew() {
 
   return (
     <div className="space-y-8 pb-8">
-      <Suspense fallback={<HeaderSkeleton />}>
-        <DashboardHeaderAndMetrics />
-      </Suspense>
+      <QueryErrorCard title={t("dashboard.title")}>
+        <Suspense fallback={<HeaderSkeleton />}>
+          <DashboardHeaderAndMetrics />
+        </Suspense>
+      </QueryErrorCard>
 
       {rows.map((row, rowIdx) => (
         <div key={rowIdx} className={cn("grid gap-4", row.cols)}>
           {row.items.map((item, itemIdx) => (
-            <Suspense key={itemIdx} fallback={item.fallback}>
-              <div className={item.className || ""}>{item.component}</div>
-            </Suspense>
+            <QueryErrorCard key={itemIdx}>
+              <Suspense fallback={item.fallback}>
+                <div className={item.className || ""}>{item.component}</div>
+              </Suspense>
+            </QueryErrorCard>
           ))}
         </div>
       ))}

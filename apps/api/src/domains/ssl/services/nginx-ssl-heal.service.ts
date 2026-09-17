@@ -20,8 +20,9 @@ export class NginxSslHealService {
     let disabledSsl = 0;
 
     // Domains with SSL toggled on but no certificate → turn SSL off
+    // Prisma 5 optional 1-1: prefer `{ is: null }` (shorthand `null` is also typed OK).
     const orphaned = await prisma.domain.findMany({
-      where: { sslEnabled: true, sslCertificate: null },
+      where: { sslEnabled: true, sslCertificate: { is: null } },
       select: { id: true, name: true },
     });
 
