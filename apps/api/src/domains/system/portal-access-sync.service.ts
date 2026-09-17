@@ -3,15 +3,16 @@ import path from 'node:path';
 import prisma from '../../config/database';
 import { config } from '../../config';
 import logger from '../../utils/logger';
+import { normalizePortalOrigins } from './portal-origin.util';
 
 let cachedPortalOrigins: string[] = [];
 
 export function getMergedCorsOrigins(): string[] {
-  return [...new Set([...config.cors.origin, ...cachedPortalOrigins])];
+  return normalizePortalOrigins([...config.cors.origin, ...cachedPortalOrigins]);
 }
 
 export function setPortalAccessOriginsCache(origins: string[]): void {
-  cachedPortalOrigins = [...origins];
+  cachedPortalOrigins = normalizePortalOrigins(origins);
 }
 
 export function hostsFromOrigins(origins: string[]): string[] {
