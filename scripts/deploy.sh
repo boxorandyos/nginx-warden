@@ -570,6 +570,12 @@ if [[ -f "${SCRIPT_DIR}/repair-nginx-missing-certs.sh" ]]; then
     bash "${SCRIPT_DIR}/repair-nginx-missing-certs.sh" >> "$LOG_FILE" 2>&1 || warn "repair-nginx-missing-certs.sh reported an issue"
 fi
 
+# Rewrite deprecated listen … http2 when nginx ≥1.25.1
+if [[ -f "${SCRIPT_DIR}/migrate-nginx-http2.sh" ]]; then
+    chmod +x "${SCRIPT_DIR}/migrate-nginx-http2.sh" 2>/dev/null || true
+    bash "${SCRIPT_DIR}/migrate-nginx-http2.sh" >> "$LOG_FILE" 2>&1 || warn "http2 migrate had issues (continuing)"
+fi
+
 # Test nginx configuration
 if nginx -t >> "$LOG_FILE" 2>&1; then
     log "✓ Nginx configuration test passed"
