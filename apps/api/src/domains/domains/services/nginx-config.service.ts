@@ -316,8 +316,11 @@ upstream ${locationUpstreamName}_backend {
     // Generate Real IP block
     const realIpBlock = await this.generateRealIpBlock(domain);
 
+    // SSL is only active when enabled AND a certificate exists (avoids redirect to broken HTTPS)
+    const sslActive = Boolean(domain.sslEnabled && domain.sslCertificate);
+
     // If SSL is enabled, HTTP server just redirects to HTTPS
-    if (domain.sslEnabled) {
+    if (sslActive) {
       return `
 server {
     listen 80;

@@ -23,6 +23,8 @@ import {
   toPrismaAcmeProvider,
 } from './ssl-issuer.util';
 import { nginxReloadService } from '../domains/services/nginx-reload.service';
+import { nginxConfigService } from '../domains/services/nginx-config.service';
+import { domainsRepository } from '../domains/domains.repository';
 
 /**
  * SSL Service - Handles all SSL certificate business logic
@@ -520,7 +522,8 @@ export class SSLService {
   }
 
   /**
-   * Delete SSL certificate
+   * Delete SSL certificate and regenerate nginx so site configs never
+   * keep referencing removed /etc/nginx/ssl/*.crt files.
    */
   async deleteCertificate(
     id: string,
@@ -533,31 +536,58 @@ export class SSLService {
       throw new Error('SSL certificate not found');
     }
 
+    const domainName = cert.domain.name;
+    const domainId = cert.domainId;
+
     // Delete certificate files
     try {
-      await fs.unlink(path.join(SSL_CONSTANTS.CERTS_PATH, `${cert.domain.name}.crt`)).catch(() => {});
-      await fs.unlink(path.join(SSL_CONSTANTS.CERTS_PATH, `${cert.domain.name}.key`)).catch(() => {});
-      await fs.unlink(path.join(SSL_CONSTANTS.CERTS_PATH, `${cert.domain.name}.chain.crt`)).catch(() => {});
+      await fs.unlink(path.join(SSL_CONSTANTS.CERTS_PATH, `${domainName}.crt`)).catch(() => {});
+      await fs.unlink(path.join(SSL_CONSTANTS.CERTS_PATH, `${domainName}.key`)).catch(() => {});
+      await fs.unlink(path.join(SSL_CONSTANTS.CERTS_PATH, `${domainName}.chain.crt`)).catch(() => {});
     } catch (error) {
-      logger.error(`Failed to delete certificate files for ${cert.domain.name}:`, error);
+      logger.error(`Failed to delete certificate files for ${domainName}:`, error);
     }
 
-    // Update domain SSL status
-    await sslRepository.updateDomainSSLStatus(cert.domainId, false, null);
+    // Update domain SSL status before removing the cert row
+    await sslRepository.updateDomainSSLStatus(domainId, false, null);
 
     // Delete certificate from database
     await sslRepository.delete(id);
 
+    // Regenerate nginx without HTTPS for this domain (critical — otherwise nginx -t fails)
+    try {
+      const domain = await domainsRepository.findById(domainId);
+      if (domain) {
+        await nginxConfigService.generateConfig({
+          ...domain,
+          sslEnabled: false,
+          sslCertificate: null,
+        });
+        if (domain.status === 'active') {
+          await nginxConfigService.enableConfig(domain.name);
+        }
+        const reloaded = await nginxReloadService.autoReload(true);
+        if (!reloaded) {
+          logger.warn(`Nginx reload after deleting SSL for ${domainName} failed`);
+        }
+      }
+    } catch (error) {
+      logger.error(`Failed to regenerate nginx after deleting SSL for ${domainName}:`, error);
+      throw new Error(
+        `Certificate deleted but nginx config could not be updated for ${domainName}. Restart the API or repair SSL configs. (${(error as Error).message})`
+      );
+    }
+
     // Log activity
     await this.logActivity(
       userId,
-      `Deleted SSL certificate for ${cert.domain.name}`,
+      `Deleted SSL certificate for ${domainName}`,
       ip,
       userAgent,
       true
     );
 
-    logger.info(`SSL certificate deleted for ${cert.domain.name} by user ${userId}`);
+    logger.info(`SSL certificate deleted for ${domainName} by user ${userId}`);
   }
 
   /**
