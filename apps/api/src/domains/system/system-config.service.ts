@@ -31,10 +31,11 @@ export class SystemConfigService {
       throw new NotFoundError('System config not found');
     }
     const c = config as any;
-    const { keepalivedAuthPass, ...rest } = c;
+    const { keepalivedAuthPass, zerosslEabHmacKey, zerosslEabKid, ...rest } = c;
     return {
       ...rest,
       keepalivedAuthPassSet: Boolean(keepalivedAuthPass && String(keepalivedAuthPass).length > 0),
+      zerosslEabConfigured: Boolean(zerosslEabKid && zerosslEabHmacKey),
     } as SystemConfig;
   }
 
@@ -144,7 +145,8 @@ export class SystemConfigService {
   async connectToMaster(
     masterHost: string,
     masterPort: number,
-    masterApiKey: string
+    masterApiKey: string,
+    syncInterval?: number
   ): Promise<SystemConfig> {
     if (!masterHost || !masterPort || !masterApiKey) {
       throw new ValidationError('Master host, port, and API key are required');
@@ -187,12 +189,27 @@ export class SystemConfigService {
         true
       );
 
+      if (syncInterval && syncInterval >= 10) {
+        await this.repository.updateSyncInterval(updatedConfig.id, syncInterval);
+      }
+
+      // Start (or restart) the slave pull scheduler now that we are connected
+      try {
+        const { slaveSyncSchedulerService } = await import(
+          '../cluster/services/slave-sync-scheduler.service'
+        );
+        await slaveSyncSchedulerService.restart();
+      } catch (schedErr) {
+        logger.warn('Failed to start slave sync scheduler after connect:', schedErr);
+      }
+
       logger.info('Successfully connected to master', {
         masterHost,
         masterPort,
       });
 
-      return this.toPublicConfig(updatedConfig);
+      const latest = await this.repository.getSystemConfig();
+      return this.toPublicConfig(latest);
     } catch (connectionError: any) {
       // Connection failed, update config with error
       const errorMessage =
@@ -230,6 +247,14 @@ export class SystemConfigService {
     }
 
     const d = await this.repository.disconnectFromMaster(config.id);
+    try {
+      const { slaveSyncSchedulerService } = await import(
+        '../cluster/services/slave-sync-scheduler.service'
+      );
+      slaveSyncSchedulerService.stop();
+    } catch {
+      // ignore
+    }
     return this.toPublicConfig(d);
   }
 
@@ -292,7 +317,7 @@ export class SystemConfigService {
   /**
    * Sync configuration from master
    */
-  async syncWithMaster(authToken: string): Promise<{
+  async syncWithMaster(_authToken?: string): Promise<{
     imported: boolean;
     masterHash: string;
     slaveHash: string | null;
@@ -316,104 +341,19 @@ export class SystemConfigService {
       throw new ValidationError('Not connected to master. Please connect first.');
     }
 
-    logger.info('Starting sync from master...', {
-      masterHost: config.masterHost,
-      masterPort: config.masterPort,
-    });
-
-    // Download config from master using new node-sync API
-    const masterUrl = `http://${config.masterHost}:${config.masterPort || 3001}/api/node-sync/export`;
-
-    const response = await axios.get(masterUrl, {
-      headers: {
-        'X-Slave-API-Key': config.masterApiKey,
-      },
-      timeout: 30000,
-    });
-
-    if (!response.data.success) {
-      throw new Error(response.data.message || 'Failed to export config from master');
-    }
-
-    // Basic validation: check if response has required structure
-    if (!response.data.data || !response.data.data.hash || !response.data.data.config) {
-      throw new ValidationError('Invalid response structure from master');
-    }
-
-    const { hash: masterHash, config: masterConfig } = response.data.data;
-
-    // Calculate CURRENT hash of slave's config (to detect data loss)
-    const slaveCurrentConfigResponse = await axios.get(
-      `http://localhost:${process.env.PORT || 3001}/api/node-sync/current-hash`,
-      {
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
-      }
+    const { slaveSyncSchedulerService } = await import(
+      '../cluster/services/slave-sync-scheduler.service'
     );
-
-    const slaveCurrentHash = slaveCurrentConfigResponse.data.data?.hash || null;
-
-    logger.info('Comparing slave current config with master', {
-      masterHash,
-      slaveCurrentHash,
-      lastSyncHash: config.lastSyncHash || 'none',
-    });
-
-    // Compare CURRENT slave hash with master hash
-    if (slaveCurrentHash && slaveCurrentHash === masterHash) {
-      logger.info('Config identical (hash match), skipping import');
-
-      // Update lastConnectedAt and lastSyncHash
-      await this.repository.updateLastSyncHash(config.id, masterHash);
-
-      return {
-        imported: false,
-        masterHash,
-        slaveHash: slaveCurrentHash,
-        changesApplied: 0,
-        lastSyncAt: new Date().toISOString(),
-      };
+    const pull = await slaveSyncSchedulerService.pullOnce();
+    if (!pull) {
+      throw new ValidationError('Sync skipped (already in progress or not connected)');
     }
-
-    // Hash different - Force sync (data loss or master updated)
-    logger.info('Config mismatch detected, force syncing...', {
-      masterHash,
-      slaveCurrentHash: slaveCurrentHash || 'null',
-      reason: !slaveCurrentHash ? 'slave_empty' : 'data_mismatch',
-    });
-
-    // Call import API (internal call to ourselves)
-    const importResponse = await axios.post(
-      `http://localhost:${process.env.PORT || 3001}/api/node-sync/import`,
-      {
-        hash: masterHash,
-        config: masterConfig,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
-      }
-    );
-
-    if (!importResponse.data.success) {
-      throw new Error(importResponse.data.message || 'Import failed');
-    }
-
-    const importData = importResponse.data.data;
-
-    // Update lastSyncHash
-    await this.repository.updateLastSyncHash(config.id, masterHash);
-
-    logger.info(`Sync completed successfully. ${importData.changes} changes applied.`);
 
     return {
-      imported: true,
-      masterHash,
-      slaveHash: slaveCurrentHash,
-      changesApplied: importData.changes,
-      details: importData.details,
+      imported: pull.imported,
+      masterHash: pull.masterHash,
+      slaveHash: null,
+      changesApplied: pull.changesApplied,
       lastSyncAt: new Date().toISOString(),
     };
   }
@@ -490,6 +430,57 @@ export class SystemConfigService {
     if (body.keepalivedEnabled && !applied.ok) {
       logger.warn('[KEEPALIVED] apply after update reported failure', { message: applied.message });
     }
+
+    return this.toPublicConfig(updated);
+  }
+
+  /**
+   * ACME CA defaults and ZeroSSL EAB credentials.
+   */
+  async updateAcmeSettings(body: {
+    acmeDefaultProvider?: 'letsencrypt' | 'zerossl' | string;
+    zerosslEabKid?: string | null;
+    zerosslEabHmacKey?: string | null;
+    clearZerosslEab?: boolean;
+  }): Promise<SystemConfig> {
+    const c = await this.repository.getSystemConfig();
+    const providerRaw = body.acmeDefaultProvider;
+    let acmeDefaultProvider: 'letsencrypt' | 'zerossl' | undefined;
+    if (providerRaw) {
+      const v = String(providerRaw).toLowerCase().replace(/[\s_-]/g, '');
+      if (v === 'zerossl') acmeDefaultProvider = 'zerossl';
+      else if (v === 'letsencrypt' || v === 'letsencryptorg' || v === 'le') {
+        acmeDefaultProvider = 'letsencrypt';
+      } else {
+        throw new ValidationError('acmeDefaultProvider must be letsencrypt or zerossl');
+      }
+    }
+
+    if (acmeDefaultProvider === 'zerossl') {
+      const kid = body.zerosslEabKid ?? (c as any).zerosslEabKid;
+      const hmac = body.zerosslEabHmacKey ?? (c as any).zerosslEabHmacKey;
+      if (!kid || !hmac) {
+        throw new ValidationError(
+          'ZeroSSL as the default CA requires EAB Key ID and HMAC key from the ZeroSSL developer console'
+        );
+      }
+    }
+
+    const updated = await this.repository.updateAcmeSettings(c.id, {
+      ...(acmeDefaultProvider && { acmeDefaultProvider }),
+      ...(body.clearZerosslEab
+        ? { zerosslEabKid: null, zerosslEabHmacKey: null }
+        : {
+            ...(body.zerosslEabKid !== undefined && {
+              zerosslEabKid: body.zerosslEabKid?.trim() || null,
+            }),
+            ...(body.zerosslEabHmacKey !== undefined &&
+              body.zerosslEabHmacKey !== '' &&
+              body.zerosslEabHmacKey !== null && {
+                zerosslEabHmacKey: body.zerosslEabHmacKey.trim(),
+              }),
+          }),
+    });
 
     return this.toPublicConfig(updated);
   }

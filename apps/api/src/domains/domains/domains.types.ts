@@ -52,6 +52,7 @@ export interface RealIpConfigData {
 // Custom location configuration
 export interface CustomLocationData {
   path: string; // Location path (e.g., /api, /admin)
+  useUpstream?: boolean; // Toggle: use upstream backend or custom config
   upstreamType: 'proxy_pass' | 'grpc_pass' | 'grpcs_pass'; // Type of upstream
   upstreams: CreateUpstreamData[]; // Upstream servers for this location
   config?: string; // Additional custom nginx config

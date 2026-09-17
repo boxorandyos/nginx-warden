@@ -24,20 +24,25 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Domain } from '@/types';
 import { toast } from 'sonner';
 import { useIssueAutoSSL, useUploadManualSSL, useDomains } from '@/queries';
+import { sslService } from '@/services/ssl.service';
 
 interface SSLDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
+  /** Prefill / lock the domain when opened from the Domains SSL toggle */
+  defaultDomainId?: string;
+  defaultDomainName?: string;
 }
 
-export function SSLDialog({ open, onOpenChange, onSuccess }: SSLDialogProps) {
+export function SSLDialog({ open, onOpenChange, onSuccess, defaultDomainId, defaultDomainName }: SSLDialogProps) {
   const { t } = useTranslation();
   const [method, setMethod] = useState<'auto' | 'manual'>('auto');
   const [formData, setFormData] = useState({
     domainId: '',
     email: '',
     autoRenew: true,
+    acmeProvider: 'letsencrypt' as 'letsencrypt' | 'zerossl',
     certificate: '',
     privateKey: '',
     chain: '',
@@ -47,12 +52,37 @@ export function SSLDialog({ open, onOpenChange, onSuccess }: SSLDialogProps) {
   const { data: domainsResponse, isLoading: domainsLoading, error: domainsError } = useDomains();
   
   // Filter domains without SSL certificate - check both sslCertificate object and sslEnabled flag
-  const domainsWithoutSSL = domainsResponse?.data?.filter(d => !d.sslCertificate && !d.sslEnabled) || [];
+  const domainsWithoutSSL = domainsResponse?.data?.filter(d => !d.sslCertificate) || [];
+  const domainOptions =
+    defaultDomainId &&
+    defaultDomainName &&
+    !domainsWithoutSSL.some((d) => d.id === defaultDomainId)
+      ? [{ id: defaultDomainId, name: defaultDomainName } as Domain, ...domainsWithoutSSL]
+      : domainsWithoutSSL;
 
   const issueAutoSSL = useIssueAutoSSL();
   const uploadManualSSL = useUploadManualSSL();
 
-  // Show error toast if domains fail to load
+  // Prefill domain when opened from the domains page SSL toggle
+  useEffect(() => {
+    if (open && defaultDomainId) {
+      setFormData((prev) => ({ ...prev, domainId: defaultDomainId }));
+    }
+  }, [open, defaultDomainId]);
+
+  useEffect(() => {
+    if (!open) return;
+    sslService
+      .getSystemInfo()
+      .then((info) => {
+        const ca = info.defaultCA === 'zerossl' ? 'zerossl' : 'letsencrypt';
+        setFormData((prev) => ({ ...prev, acmeProvider: ca }));
+      })
+      .catch(() => {
+        /* keep Let's Encrypt default */
+      });
+  }, [open]);
+
   useEffect(() => {
     if (domainsError) {
       toast.error(t('ssl.toast.loadDomainsFailed'));
@@ -255,8 +285,13 @@ export function SSLDialog({ open, onOpenChange, onSuccess }: SSLDialogProps) {
           domainId: formData.domainId,
           email: formData.email || undefined,
           autoRenew: formData.autoRenew,
+          acmeProvider: formData.acmeProvider,
         });
-        toast.success(t('ssl.toast.issuedZeroSsl'));
+        toast.success(
+          t('ssl.toast.issued', {
+            provider: formData.acmeProvider === 'zerossl' ? 'ZeroSSL' : "Let's Encrypt",
+          })
+        );
       } else {
         await uploadManualSSL.mutateAsync({
           domainId: formData.domainId,
@@ -272,9 +307,10 @@ export function SSLDialog({ open, onOpenChange, onSuccess }: SSLDialogProps) {
       
       // Reset form
       setFormData({
-        domainId: '',
+        domainId: defaultDomainId || '',
         email: '',
         autoRenew: true,
+        acmeProvider: 'letsencrypt',
         certificate: '',
         privateKey: '',
         chain: '',
@@ -300,18 +336,18 @@ export function SSLDialog({ open, onOpenChange, onSuccess }: SSLDialogProps) {
             <Select
               value={formData.domainId}
               onValueChange={(value) => setFormData({ ...formData, domainId: value })}
-              disabled={domainsLoading}
+              disabled={domainsLoading || Boolean(defaultDomainId)}
             >
               <SelectTrigger>
                 <SelectValue placeholder={domainsLoading ? "Loading domains..." : "Select a domain"} />
               </SelectTrigger>
               <SelectContent>
-                {domainsWithoutSSL.length === 0 ? (
+                {domainOptions.length === 0 ? (
                   <SelectItem value="none" disabled>
                     No domains available without SSL
                   </SelectItem>
                 ) : (
-                  domainsWithoutSSL.map((domain: Domain) => (
+                  domainOptions.map((domain: Domain) => (
                     <SelectItem key={domain.id} value={domain.id}>
                       {domain.name}
                     </SelectItem>
@@ -323,16 +359,38 @@ export function SSLDialog({ open, onOpenChange, onSuccess }: SSLDialogProps) {
 
           <Tabs value={method} onValueChange={(v) => setMethod(v as 'auto' | 'manual')}>
             <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="auto">Auto (ZeroSSL/Let's Encrypt)</TabsTrigger>
+              <TabsTrigger value="auto">Auto (Let's Encrypt / ZeroSSL)</TabsTrigger>
               <TabsTrigger value="manual">Manual Upload</TabsTrigger>
             </TabsList>
 
             <TabsContent value="auto" className="space-y-4">
               <div className="rounded-lg bg-primary/10 p-4 border border-primary/20">
-                <h4 className="font-medium mb-2">ZeroSSL/Let's Encrypt Auto-SSL</h4>
+                <h4 className="font-medium mb-2">Let's Encrypt / ZeroSSL Auto-SSL</h4>
                 <p className="text-sm text-muted-foreground">
-                  Automatically obtain and renew SSL certificates from ZeroSSL or Let's Encrypt.
-                  Certificates will be issued within minutes and auto-renewed before expiry.
+                  Automatically obtain and renew SSL certificates. Choose a certificate authority
+                  per certificate. Let's Encrypt needs no extra credentials; ZeroSSL requires EAB
+                  keys under Configuration.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="acmeProvider">{t('ssl.dialog.provider')}</Label>
+                <Select
+                  value={formData.acmeProvider}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, acmeProvider: value as 'letsencrypt' | 'zerossl' })
+                  }
+                >
+                  <SelectTrigger id="acmeProvider">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="letsencrypt">Let's Encrypt</SelectItem>
+                    <SelectItem value="zerossl">ZeroSSL</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {t('ssl.dialog.providerHint')}
                 </p>
               </div>
 

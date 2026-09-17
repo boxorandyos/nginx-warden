@@ -1,6 +1,13 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import logger from '../../../utils/logger';
+import {
+  buildWardenCrsExclusionsConf,
+  buildWardenCrsSetupConf,
+  WARDEN_CRS_EXCLUSIONS_FILENAME,
+  WARDEN_CRS_SETUP_FILENAME,
+  WARDEN_MAIN_CONF_INCLUDES,
+} from '../crs-tuning';
 
 const MODSEC_MAIN_CONF = '/etc/nginx/modsec/main.conf';
 const MODSEC_CRS_DISABLE_PATH = '/etc/nginx/modsec/crs_disabled';
@@ -166,6 +173,33 @@ export class ModSecSetupService {
         needsUpdate = true;
         logger.info('✓ Added custom rules include to main.conf');
       }
+
+      // Warden CRS tuning overlay (paranoia 1 + raised thresholds)
+      const setupInclude = WARDEN_MAIN_CONF_INCLUDES.setup;
+      const exclusionsInclude = WARDEN_MAIN_CONF_INCLUDES.exclusions;
+      if (!mainConfContent.includes(setupInclude)) {
+        if (mainConfContent.includes('Include /etc/nginx/modsec/coreruleset/crs-setup.conf')) {
+          mainConfContent = mainConfContent.replace(
+            'Include /etc/nginx/modsec/coreruleset/crs-setup.conf',
+            `Include /etc/nginx/modsec/coreruleset/crs-setup.conf\n${setupInclude}`
+          );
+        } else {
+          mainConfContent += `\n${setupInclude}\n`;
+        }
+        needsUpdate = true;
+        logger.info('✓ Added Warden CRS setup overlay include to main.conf');
+      }
+      if (!mainConfContent.includes(exclusionsInclude)) {
+        mainConfContent += `\n# Warden CRS false-positive exclusions\n${exclusionsInclude}\n`;
+        needsUpdate = true;
+        logger.info('✓ Added Warden CRS exclusions include to main.conf');
+      }
+
+      const setupPath = path.join('/etc/nginx/modsec', WARDEN_CRS_SETUP_FILENAME);
+      const exclusionsPath = path.join('/etc/nginx/modsec', WARDEN_CRS_EXCLUSIONS_FILENAME);
+      await fs.writeFile(setupPath, buildWardenCrsSetupConf(), 'utf-8');
+      await fs.writeFile(exclusionsPath, buildWardenCrsExclusionsConf(), 'utf-8');
+      logger.info('✓ Wrote Warden CRS tuning overlays (paranoia 1, inbound threshold 10)');
 
       // Write main.conf if updated
       if (needsUpdate) {

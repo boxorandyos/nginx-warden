@@ -84,6 +84,9 @@ export interface SystemConfig {
   keepalivedPriorityMaster: number;
   keepalivedPriorityBackup: number;
 
+  acmeDefaultProvider?: 'letsencrypt' | 'zerossl';
+  zerosslEabConfigured?: boolean;
+
   createdAt: Date;
   updatedAt: Date;
 }

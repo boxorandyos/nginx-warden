@@ -158,7 +158,7 @@ export const reloadNginx = async (): Promise<void> => {
  */
 export const getInstallationStatus = async (): Promise<any> => {
   try {
-    const response = await api.get('/system/installation-status');
+    const response = await api.get('/system/installation-status', { timeout: 8_000 });
     return response.data.data;
   } catch (error: any) {
     throw error;

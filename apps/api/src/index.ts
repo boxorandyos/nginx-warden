@@ -14,6 +14,7 @@ import { startAlertMonitoring, stopAlertMonitoring } from './domains/alerts/serv
 import { startSlaveNodeStatusCheck, stopSlaveNodeStatusCheck } from './domains/cluster/services/slave-status-checker.service';
 import { backupSchedulerService } from './domains/backup/services/backup-scheduler.service';
 import { sslSchedulerService } from './domains/ssl/services/ssl-scheduler.service';
+import { slaveSyncSchedulerService } from './domains/cluster/services/slave-sync-scheduler.service';
 
 const app: Application = express();
 let server: ReturnType<Application['listen']> | null = null;
@@ -108,6 +109,12 @@ async function startServer(): Promise<void> {
   } catch (error) {
     logger.error('Failed to start SSL auto-renew scheduler:', error);
   }
+
+  try {
+    await slaveSyncSchedulerService.start();
+  } catch (error) {
+    logger.error('Failed to start slave sync scheduler:', error);
+  }
   });
 }
 
@@ -131,6 +138,7 @@ process.on('SIGTERM', () => {
   if (sslSchedulerTimer) {
     sslSchedulerService.stop(sslSchedulerTimer);
   }
+  slaveSyncSchedulerService.stop();
   server?.close(() => {
     logger.info('HTTP server closed');
     process.exit(0);
@@ -151,6 +159,7 @@ process.on('SIGINT', () => {
   if (sslSchedulerTimer) {
     sslSchedulerService.stop(sslSchedulerTimer);
   }
+  slaveSyncSchedulerService.stop();
   server?.close(() => {
     logger.info('HTTP server closed');
     process.exit(0);

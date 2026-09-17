@@ -45,6 +45,7 @@ interface UpstreamFormData {
 
 interface CustomLocationFormData {
   path: string;
+  useUpstream?: boolean;
   upstreamType: 'proxy_pass' | 'grpc_pass' | 'grpcs_pass';
   upstreams: UpstreamFormData[];
   config?: string;
@@ -232,6 +233,32 @@ export function DomainDialogV2({ open, onOpenChange, domain, onSave, isLoading =
       return;
     }
 
+    const locationErrors: string[] = [];
+    const seenPaths = new Set<string>();
+    data.customLocations.forEach((loc, i) => {
+      const raw = (loc.path || '').trim();
+      if (!raw) return;
+      const path = raw.startsWith('/') ? raw.replace(/\/+$/, '') || '/' : `/${raw.replace(/\/+$/, '')}`;
+      if (path === '/') {
+        locationErrors.push(`Location ${i + 1}: path "/" is reserved for the default backend`);
+        return;
+      }
+      if (seenPaths.has(path)) {
+        locationErrors.push(`Location ${i + 1}: duplicate path "${path}"`);
+        return;
+      }
+      seenPaths.add(path);
+      const hasUpstream = loc.useUpstream && loc.upstreams?.some((u) => u.host);
+      const hasConfig = Boolean(loc.config && loc.config.trim());
+      if (!hasUpstream && !hasConfig) {
+        locationErrors.push(`Location ${i + 1} (${path}): add a backend or custom nginx config`);
+      }
+    });
+    if (locationErrors.length > 0) {
+      toast.error(locationErrors[0]);
+      return;
+    }
+
     // Prepare data in API format
     const domainData: any = {
       name: data.name,
@@ -263,7 +290,17 @@ export function DomainDialogV2({ open, onOpenChange, domain, onSave, isLoading =
         http2Enabled: data.http2Enabled,
         grpcEnabled: data.grpcEnabled,
         clientMaxBodySize: Number(data.clientMaxBodySize),
-        customLocations: data.customLocations.filter(loc => loc.path && loc.upstreams.length > 0),
+        customLocations: data.customLocations
+          .filter((loc) => {
+            if (!loc.path) return false;
+            const hasUpstream = loc.upstreams?.some((u) => u.host);
+            const hasConfig = Boolean(loc.config && loc.config.trim());
+            return hasUpstream || hasConfig;
+          })
+          .map((loc) => ({
+            ...loc,
+            useUpstream: loc.useUpstream !== false && Boolean(loc.upstreams?.some((u) => u.host)),
+          })),
         limitReqPerMinute: Math.max(0, Number(data.limitReqPerMinute) || 0),
         limitReqBurst: Math.max(1, Number(data.limitReqBurst) || 20),
         limitConnPerAddr: Math.max(0, Number(data.limitConnPerAddr) || 0),
@@ -992,7 +1029,7 @@ export function DomainDialogV2({ open, onOpenChange, domain, onSave, isLoading =
                                   </Button>
                                 </div>
 
-                                {(watch(`customLocations.${locationIndex}.upstreams`) || []).map((upstream: any, upstreamIndex: number) => (
+                                {(watch(`customLocations.${locationIndex}.upstreams`) || []).map((_upstream: any, upstreamIndex: number) => (
                                   <Card key={upstreamIndex} className="bg-muted/30">
                                     <CardContent className="pt-4 space-y-3">
                                       <div className="flex items-center justify-between">

@@ -212,6 +212,21 @@ export class ClusterRepository {
         status: d.status,
         sslEnabled: d.sslEnabled,
         modsecEnabled: d.modsecEnabled,
+        realIpEnabled: d.realIpEnabled,
+        realIpCloudflare: d.realIpCloudflare,
+        realIpCustomCidrs: d.realIpCustomCidrs,
+        hstsEnabled: d.hstsEnabled,
+        http2Enabled: d.http2Enabled,
+        grpcEnabled: d.grpcEnabled,
+        clientMaxBodySize: d.clientMaxBodySize,
+        customLocations: d.customLocations ?? null,
+        limitReqPerMinute: d.limitReqPerMinute,
+        limitReqBurst: d.limitReqBurst,
+        limitConnPerAddr: d.limitConnPerAddr,
+        modsecEngineMode: d.modsecEngineMode,
+        crowdsecNginxEnabled: d.crowdsecNginxEnabled,
+        crowdsecAppsecEnabled: d.crowdsecAppsecEnabled,
+        sslExpiry: d.sslExpiry ? d.sslExpiry.toISOString() : null,
         upstreams: d.upstreams.map(u => ({
           host: u.host,
           port: u.port,
@@ -240,6 +255,7 @@ export class ClusterRepository {
         privateKey: s.privateKey,
         chain: s.chain,
         autoRenew: s.autoRenew,
+        acmeProvider: (s as any).acmeProvider || null,
         validFrom: s.validFrom.toISOString(),
         validTo: s.validTo.toISOString()
       })),
@@ -352,13 +368,47 @@ export class ClusterRepository {
           update: {
             status: domainData.status as any,
             sslEnabled: domainData.sslEnabled,
-            modsecEnabled: domainData.modsecEnabled
+            modsecEnabled: domainData.modsecEnabled,
+            realIpEnabled: domainData.realIpEnabled ?? false,
+            realIpCloudflare: domainData.realIpCloudflare ?? false,
+            realIpCustomCidrs: domainData.realIpCustomCidrs ?? [],
+            hstsEnabled: domainData.hstsEnabled ?? false,
+            http2Enabled: domainData.http2Enabled ?? true,
+            grpcEnabled: domainData.grpcEnabled ?? false,
+            clientMaxBodySize: domainData.clientMaxBodySize ?? undefined,
+            customLocations: domainData.customLocations
+              ? JSON.parse(JSON.stringify(domainData.customLocations))
+              : undefined,
+            limitReqPerMinute: domainData.limitReqPerMinute ?? 0,
+            limitReqBurst: domainData.limitReqBurst ?? 20,
+            limitConnPerAddr: domainData.limitConnPerAddr ?? 0,
+            modsecEngineMode: (domainData.modsecEngineMode as any) ?? undefined,
+            crowdsecNginxEnabled: domainData.crowdsecNginxEnabled ?? false,
+            crowdsecAppsecEnabled: domainData.crowdsecAppsecEnabled ?? false,
+            sslExpiry: domainData.sslExpiry ? new Date(domainData.sslExpiry) : undefined,
           },
           create: {
             name: domainData.name,
             status: domainData.status as any,
             sslEnabled: domainData.sslEnabled,
-            modsecEnabled: domainData.modsecEnabled
+            modsecEnabled: domainData.modsecEnabled,
+            realIpEnabled: domainData.realIpEnabled ?? false,
+            realIpCloudflare: domainData.realIpCloudflare ?? false,
+            realIpCustomCidrs: domainData.realIpCustomCidrs ?? [],
+            hstsEnabled: domainData.hstsEnabled ?? false,
+            http2Enabled: domainData.http2Enabled ?? true,
+            grpcEnabled: domainData.grpcEnabled ?? false,
+            clientMaxBodySize: domainData.clientMaxBodySize ?? undefined,
+            customLocations: domainData.customLocations
+              ? JSON.parse(JSON.stringify(domainData.customLocations))
+              : undefined,
+            limitReqPerMinute: domainData.limitReqPerMinute ?? 0,
+            limitReqBurst: domainData.limitReqBurst ?? 20,
+            limitConnPerAddr: domainData.limitConnPerAddr ?? 0,
+            modsecEngineMode: (domainData.modsecEngineMode as any) ?? undefined,
+            crowdsecNginxEnabled: domainData.crowdsecNginxEnabled ?? false,
+            crowdsecAppsecEnabled: domainData.crowdsecAppsecEnabled ?? false,
+            sslExpiry: domainData.sslExpiry ? new Date(domainData.sslExpiry) : undefined,
           }
         });
         results.domains++;
@@ -429,7 +479,8 @@ export class ClusterRepository {
             chain: sslData.chain,
             validFrom: sslData.validFrom ? new Date(sslData.validFrom) : new Date(),
             validTo: sslData.validTo ? new Date(sslData.validTo) : new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
-            autoRenew: sslData.autoRenew || false
+            autoRenew: sslData.autoRenew || false,
+            acmeProvider: (sslData.acmeProvider as any) || undefined,
           },
           create: {
             domainId: domain.id,
@@ -441,7 +492,8 @@ export class ClusterRepository {
             chain: sslData.chain,
             validFrom: sslData.validFrom ? new Date(sslData.validFrom) : new Date(),
             validTo: sslData.validTo ? new Date(sslData.validTo) : new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
-            autoRenew: sslData.autoRenew || false
+            autoRenew: sslData.autoRenew || false,
+            acmeProvider: (sslData.acmeProvider as any) || undefined,
           }
         });
         results.ssl++;

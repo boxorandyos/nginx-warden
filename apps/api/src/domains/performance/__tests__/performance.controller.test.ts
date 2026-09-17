@@ -5,10 +5,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Response } from 'express';
 
-const getMetrics = vi.fn();
-const getStats = vi.fn();
-const getHistory = vi.fn();
-const cleanup = vi.fn();
+// vi.mock factories are hoisted — use vi.hoisted so these refs exist when the factory runs
+const { getMetrics, getStats, getHistory, cleanup } = vi.hoisted(() => ({
+  getMetrics: vi.fn(),
+  getStats: vi.fn(),
+  getHistory: vi.fn(),
+  cleanup: vi.fn(),
+}));
 
 vi.mock('../performance.service', () => ({
   getMetrics,

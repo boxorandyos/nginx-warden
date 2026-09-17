@@ -5,6 +5,7 @@ export interface IssueAutoSSLRequest {
   domainId: string;
   email?: string;
   autoRenew?: boolean;
+  acmeProvider?: 'letsencrypt' | 'zerossl';
 }
 
 export interface UploadManualSSLRequest {
@@ -23,6 +24,16 @@ export interface UpdateSSLRequest {
 }
 
 export const sslService = {
+  async getSystemInfo(): Promise<{
+    defaultCA: 'letsencrypt' | 'zerossl' | string;
+    caServerOptions: string[];
+    isAcmeInstalled: boolean;
+    zerosslEabConfigured: boolean;
+  }> {
+    const response = await api.get('/ssl/system-info');
+    return response.data.data;
+  },
+
   /**
    * Get all SSL certificates
    */
@@ -43,7 +54,7 @@ export const sslService = {
    * Issue Let's Encrypt certificate (auto)
    */
   async issueAuto(data: IssueAutoSSLRequest): Promise<SSLCertificate> {
-    const response = await api.post('/ssl/auto', data);
+    const response = await api.post('/ssl/auto', data, { timeout: 180_000 });
     return response.data.data;
   },
 
@@ -74,7 +85,7 @@ export const sslService = {
    * Renew SSL certificate
    */
   async renew(id: string): Promise<SSLCertificate> {
-    const response = await api.post(`/ssl/${id}/renew`);
+    const response = await api.post(`/ssl/${id}/renew`, {}, { timeout: 180_000 });
     return response.data.data;
   },
 };

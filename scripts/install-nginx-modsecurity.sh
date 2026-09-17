@@ -213,7 +213,30 @@ fi
 cat > "${MODSECURITY_CONFIG_DIR}/main.conf" << 'EOF'
 Include /etc/nginx/modsec/modsecurity.conf
 Include /etc/nginx/modsec/coreruleset/crs-setup.conf
+Include /etc/nginx/modsec/warden-crs-setup.conf
 Include /etc/nginx/modsec/coreruleset/rules/*.conf
+Include /etc/nginx/modsec/warden-crs-exclusions.conf
+EOF
+
+# Production-usable CRS defaults (paranoia 1, inbound threshold 10, protocol FP exclusions)
+cat > "${MODSECURITY_CONFIG_DIR}/warden-crs-setup.conf" << 'EOF'
+# Nginx Warden CRS setup overlay — paranoia 1, raised anomaly thresholds
+SecAction "id:1999000,phase:1,nolog,pass,t:none,setvar:tx.blocking_paranoia_level=1"
+SecAction "id:1999001,phase:1,nolog,pass,t:none,setvar:tx.detection_paranoia_level=1"
+SecAction "id:1999010,phase:1,nolog,pass,t:none,setvar:tx.inbound_anomaly_score_threshold=10"
+SecAction "id:1999011,phase:1,nolog,pass,t:none,setvar:tx.outbound_anomaly_score_threshold=8"
+SecAction "id:1999020,phase:1,nolog,pass,t:none,setvar:'tx.allowed_methods=GET HEAD POST OPTIONS PUT PATCH DELETE'"
+SecAction "id:1999021,phase:1,nolog,pass,t:none,setvar:'tx.allowed_request_content_type=|application/x-www-form-urlencoded| |multipart/form-data| |text/xml| |application/xml| |application/soap+xml| |application/json| |application/octet-stream| |application/csp-report| |application/xss-auditor-report| |text/plain|'"
+EOF
+
+cat > "${MODSECURITY_CONFIG_DIR}/warden-crs-exclusions.conf" << 'EOF'
+# Nginx Warden CRS false-positive exclusions (protocol policy, not attack rules)
+SecRuleRemoveById 920230
+SecRuleRemoveById 920270
+SecRuleRemoveById 920300
+SecRuleRemoveById 920340
+SecRuleRemoveById 920350
+SecRuleRemoveById 920440
 EOF
 
 log "ModSecurity configured successfully"

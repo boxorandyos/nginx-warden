@@ -8,6 +8,7 @@ describe('SSL API Compatibility', () => {
     it('should maintain all original routes', () => {
       const routes = [
         'GET /api/ssl',
+        'GET /api/ssl/system-info',
         'GET /api/ssl/:id',
         'POST /api/ssl/auto',
         'POST /api/ssl/manual',
@@ -17,7 +18,7 @@ describe('SSL API Compatibility', () => {
       ];
 
       // All routes should be preserved
-      expect(routes.length).toBe(7);
+      expect(routes.length).toBe(8);
     });
   });
 
@@ -27,6 +28,7 @@ describe('SSL API Compatibility', () => {
         domainId: 'string',
         email: 'optional string',
         autoRenew: 'optional boolean',
+        acmeProvider: 'optional letsencrypt | zerossl',
       };
       expect(autoSSLRequest).toBeDefined();
     });
@@ -82,7 +84,7 @@ describe('SSL API Compatibility', () => {
 
     it('should maintain ACME certificate issuance', () => {
       // ACME logic should be preserved:
-      // - ZeroSSL as default CA
+      // - Let's Encrypt or ZeroSSL per certificate (default Let's Encrypt)
       // - Webroot validation support
       // - DNS validation support
       // - Certificate parsing
@@ -91,9 +93,10 @@ describe('SSL API Compatibility', () => {
 
     it('should maintain certificate renewal logic', () => {
       // Renewal logic should be preserved:
-      // - ZeroSSL and Let's Encrypt certificates
-      // - Fallback to expiry extension
+      // - Let's Encrypt and ZeroSSL certificates
+      // - Force renew for manual action
       // - Update domain SSL expiry
+      // - Reload nginx after success
       expect(true).toBe(true);
     });
 

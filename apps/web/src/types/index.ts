@@ -116,6 +116,8 @@ export interface SSLCertificate {
   autoRenew: boolean;
   status: 'valid' | 'expiring' | 'expired';
   daysUntilExpiry?: number;
+  acmeProvider?: 'letsencrypt' | 'zerossl' | null;
+  acmeRenewable?: boolean;
 }
 
 export interface Alert {
@@ -360,6 +362,9 @@ export interface SystemConfig {
   keepalivedAuthPassSet?: boolean;
   keepalivedPriorityMaster?: number;
   keepalivedPriorityBackup?: number;
+
+  acmeDefaultProvider?: 'letsencrypt' | 'zerossl';
+  zerosslEabConfigured?: boolean;
   
   createdAt: string;
   updatedAt: string;

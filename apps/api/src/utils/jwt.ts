@@ -24,6 +24,8 @@ export const generateAccessToken = (payload: TokenPayload): string => {
 
 /**
  * Issue a refresh token. Reuse existingJti when rotating so the login session stays stable.
+ * Always include a unique `tv` (token version) so consecutive rotations in the same second
+ * never produce an identical JWT string (RefreshToken.token is unique).
  */
 export const generateRefreshToken = (
   payload: TokenPayload,
@@ -33,6 +35,7 @@ export const generateRefreshToken = (
   const payloadWithJti = {
     ...payload,
     jti,
+    tv: randomUUID(),
   };
 
   const token = jwt.sign(payloadWithJti, config.jwt.refreshSecret, {

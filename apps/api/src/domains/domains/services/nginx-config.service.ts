@@ -8,6 +8,11 @@ import { DomainWithRelations } from '../domains.types';
 import { cloudflareIpsService } from './cloudflare-ips.service';
 import { DEFAULT_CLIENT_MAX_BODY_SIZE } from '../../../shared/constants/domain.constants';
 import { ModsecEngineMode } from '@prisma/client';
+import {
+  nginxLocationMatch,
+  sortLocationsLongestFirst,
+  validateCustomLocations,
+} from './custom-locations.util';
 
 const execAsync = promisify(exec);
 
@@ -24,7 +29,7 @@ export class NginxConfigService {
    */
   async validateNginxConfig(): Promise<{ valid: boolean; error?: string }> {
     try {
-      const { stdout, stderr } = await execAsync('nginx -t 2>&1');
+      const { stdout, stderr } = await execAsync('nginx -t 2>&1', { timeout: 15000 });
       const output = stdout + stderr;
       
       if (output.includes('syntax is ok') && output.includes('test is successful')) {
@@ -54,6 +59,11 @@ export class NginxConfigService {
     logger.info(`- Has SSL Certificate: ${!!domain.sslCertificate}`);
     if (domain.sslCertificate) {
       logger.info(`- Certificate ID: ${domain.sslCertificate.id}`);
+    }
+
+    const locationCheck = validateCustomLocations(domain.customLocations as any);
+    if (!locationCheck.valid) {
+      throw new Error(`Invalid path-based routing: ${locationCheck.errors.join('; ')}`);
     }
 
     // Generate configuration blocks
@@ -332,6 +342,8 @@ ${realIpBlock}
     // Client max body size
     const clientMaxBodySize = this.getClientMaxBodySize(domain);
 
+    const customLocations = this.generateCustomLocations(domain);
+
     // HTTP server with full proxy configuration
     return `
 server {
@@ -353,6 +365,7 @@ ${this.generateModsecurityCrowdsecServerBlock(domain)}
     access_log /var/log/nginx/${domain.name}_access.log main;
     error_log /var/log/nginx/${domain.name}_error.log warn;
 
+${customLocations}
     location / {
         ${this.generateLimitLocationDirectives(domain)}${this.generateProxyHeaders(domain)}
         proxy_pass ${upstreamProtocol}://${upstreamName}_backend;
@@ -688,8 +701,14 @@ ${healthCheckSettings}`;
         return '';
       }
 
-      return locations.map((loc: any) => {
-        const { path: locPath, useUpstream, upstreamType, upstreams, config } = loc;
+      const ordered = sortLocationsLongestFirst(
+        locations.filter((loc: any) => loc && loc.path)
+      );
+
+      return ordered.map((loc: any) => {
+        const { path: locPathRaw, useUpstream, upstreamType, upstreams, config } = loc;
+        const locPath = locPathRaw;
+        const locationMatch = nginxLocationMatch(locPath);
         
         // Case 1: User disabled upstream (useUpstream = false) - use custom config only
         if (useUpstream === false) {
@@ -699,7 +718,7 @@ ${healthCheckSettings}`;
           }
           
           return `
-    location ${locPath} {
+    location ${locationMatch} {
         ${config}
     }`;
         }
@@ -734,7 +753,7 @@ ${healthCheckSettings}`;
           }
 
           return `
-    location ${locPath} {
+    location ${locationMatch} {
         ${this.generateProxyHeaders(domain)}
         ${proxyDirective}
         ${config ? '\n        ' + config : ''}
@@ -750,7 +769,7 @@ ${healthCheckSettings}`;
 
         if (hasProxyDirective) {
           return `
-    location ${locPath} {
+    location ${locationMatch} {
         ${config}
     }`;
         }
@@ -774,7 +793,7 @@ ${healthCheckSettings}`;
             }
 
             return `
-    location ${locPath} {
+    location ${locationMatch} {
         ${this.generateProxyHeaders(domain)}
         ${proxyDirective}
         ${config ? '\n        ' + config : ''}
@@ -785,7 +804,7 @@ ${healthCheckSettings}`;
         // Fallback: just use config if provided
         if (config && config.trim() !== '') {
           return `
-    location ${locPath} {
+    location ${locationMatch} {
         ${config}
     }`;
         }

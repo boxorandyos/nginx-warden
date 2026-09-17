@@ -15,6 +15,13 @@ import {
   UploadManualSSLDto,
   UpdateSSLDto,
 } from './dto';
+import {
+  inferProviderFromIssuer,
+  isAcmeRenewable,
+  normalizeAcmeProvider,
+  toPrismaAcmeProvider,
+} from './ssl-issuer.util';
+import { nginxReloadService } from '../domains/services/nginx-reload.service';
 
 /**
  * SSL Service - Handles all SSL certificate business logic
@@ -99,70 +106,24 @@ export class SSLService {
   }
 
   /**
-   * Get all SSL certificates with computed status
-   * Re-parse certificates to ensure accurate dates
+   * Get all SSL certificates with computed status.
+   * Uses stored validity dates so listing stays fast (no PEM re-parse on every request).
    */
   async getAllCertificates(): Promise<SSLCertificateWithStatus[]> {
     const certificates = await sslRepository.findAll();
-
     const now = new Date();
-    const updatedCertificates = await Promise.all(
-      certificates.map(async (cert) => {
-        // Re-parse certificate to get accurate dates if needed
-        let validTo = cert.validTo;
-        let validFrom = cert.validFrom;
-        
-        try {
-          // Parse certificate content to get real dates
-          const certInfo = await acmeService.parseCertificate(cert.certificate);
-          validTo = certInfo.validTo;
-          validFrom = certInfo.validFrom;
-          
-          // Update database if dates are different
-          if (
-            validTo.getTime() !== cert.validTo.getTime() ||
-            validFrom.getTime() !== cert.validFrom.getTime()
-          ) {
-            logger.info(`Updating certificate dates for ${cert.domain.name}: ${validFrom.toISOString()} - ${validTo.toISOString()}`);
-            const updateData: any = {
-              validFrom,
-              validTo,
-              commonName: certInfo.commonName,
-              sans: certInfo.sans,
-              issuer: certInfo.issuer || cert.issuer,
-              status: this.calculateStatus(validTo),
-            };
-            
-            // Add optional fields if they exist
-            if (certInfo.subject) updateData.subject = certInfo.subject;
-            if (certInfo.subjectDetails) updateData.subjectDetails = certInfo.subjectDetails;
-            if (certInfo.issuerDetails) updateData.issuerDetails = certInfo.issuerDetails;
-            if (certInfo.serialNumber) updateData.serialNumber = certInfo.serialNumber;
-            
-            await sslRepository.update(cert.id, updateData);
-          }
-        } catch (error) {
-          logger.warn(`Failed to re-parse certificate for ${cert.domain.name}:`, error);
-          // Use existing dates from database
-        }
 
-        const daysUntilExpiry = Math.floor(
-          (validTo.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
-        );
-
-        const status = this.calculateStatus(validTo);
-
-        return {
-          ...cert,
-          validFrom,
-          validTo,
-          status,
-          daysUntilExpiry,
-        };
-      })
-    );
-
-    return updatedCertificates;
+    return certificates.map((cert) => {
+      const daysUntilExpiry = Math.floor(
+        (cert.validTo.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+      );
+      return {
+        ...cert,
+        status: this.calculateStatus(cert.validTo),
+        daysUntilExpiry,
+        acmeRenewable: isAcmeRenewable(cert.issuer, (cert as any).acmeProvider),
+      };
+    });
   }
 
   /**
@@ -201,15 +162,23 @@ export class SSLService {
       throw new Error('SSL certificate already exists for this domain');
     }
 
-    logger.info(`Issuing SSL certificate for ${domain.name} using ZeroSSL`);
+    const systemConfig = await prisma.systemConfig.findFirst();
+    const provider =
+      normalizeAcmeProvider(dto.acmeProvider) ||
+      normalizeAcmeProvider(systemConfig?.acmeDefaultProvider) ||
+      acmeService.getDefaultCA();
+
+    logger.info(`Issuing SSL certificate for ${domain.name} using ${provider}`);
 
     try {
-      // Issue certificate using acme.sh with ZeroSSL
       const certFiles = await acmeService.issueCertificate({
         domain: domain.name,
         email: secureEmailAddress,
         webroot: '/var/www/html',
         standalone: false,
+        provider,
+        eabKid: systemConfig?.zerosslEabKid || undefined,
+        eabHmacKey: systemConfig?.zerosslEabHmacKey || undefined,
       });
 
       // Parse certificate to get details
@@ -232,6 +201,7 @@ export class SSLService {
         validTo: certInfo.validTo,
         autoRenew,
         status: 'valid',
+        acmeProvider: toPrismaAcmeProvider(provider),
       };
       
       // Add optional fields if they exist
@@ -590,113 +560,97 @@ export class SSLService {
   }
 
   /**
-   * Renew SSL certificate
+   * Renew SSL certificate via ACME. Manual renew is always allowed (force).
    */
   async renewCertificate(
     id: string,
     userId: string,
     ip: string,
-    userAgent: string
+    userAgent: string,
+    options: { force?: boolean } = {}
   ): Promise<SSLCertificateWithDomain> {
     const cert = await sslRepository.findById(id);
     if (!cert) {
       throw new Error('SSL certificate not found');
     }
 
-    // Check if certificate supports auto-renewal (Let's Encrypt or ZeroSSL)
-    const isAutoRenewable = SSL_CONSTANTS.AUTO_RENEWABLE_ISSUERS.includes(cert.issuer);
-    if (!isAutoRenewable) {
+    const storedProvider = normalizeAcmeProvider((cert as any).acmeProvider);
+    if (!isAcmeRenewable(cert.issuer, (cert as any).acmeProvider)) {
       throw new Error(
         `Only Let's Encrypt and ZeroSSL certificates can be renewed automatically. Current issuer: ${cert.issuer}`
       );
     }
 
-    // Check if certificate is eligible for renewal (less than 30 days remaining)
-    const now = new Date();
-    const daysUntilExpiry = Math.floor(
-      (cert.validTo.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+    const force = options.force !== false;
+    const provider =
+      storedProvider || inferProviderFromIssuer(cert.issuer) || acmeService.getDefaultCA();
+
+    logger.info(
+      `Renewing ${provider} certificate for ${cert.domain.name} (force=${force})`
     );
 
-    if (daysUntilExpiry > 30) {
-      throw new Error(
-        `Certificate is not yet eligible for renewal. It expires in ${daysUntilExpiry} days. Renewal is only allowed when less than 30 days remain.`
-      );
-    }
-
-    logger.info(`Renewing ${cert.issuer} certificate for ${cert.domain.name} (${daysUntilExpiry} days remaining)`);
-
-    let certificate, privateKey, chain;
-    let certInfo;
+    const systemConfig = await prisma.systemConfig.findFirst();
 
     try {
-      // Try to renew using acme.sh
-      const certFiles = await acmeService.renewCertificate(cert.domain.name);
+      const certFiles = await acmeService.renewCertificate(cert.domain.name, {
+        provider,
+        force,
+        eabKid: systemConfig?.zerosslEabKid || undefined,
+        eabHmacKey: systemConfig?.zerosslEabHmacKey || undefined,
+      });
 
-      certificate = certFiles.certificate;
-      privateKey = certFiles.privateKey;
-      chain = certFiles.chain;
+      const certInfo = await acmeService.parseCertificate(certFiles.certificate);
 
-      // Parse renewed certificate
-      certInfo = await acmeService.parseCertificate(certificate);
-
-      logger.info(`Certificate renewed successfully for ${cert.domain.name}`);
-    } catch (renewError: any) {
-      logger.warn(`Failed to renew certificate: ${renewError.message}. Extending expiry...`);
-
-      // Fallback: just extend expiry (placeholder)
-      certInfo = {
-        commonName: cert.commonName,
-        sans: cert.sans,
-        issuer: cert.issuer,
-        subject: (cert as any).subject || '',
-        subjectDetails: (cert as any).subjectDetails || {},
-        issuerDetails: (cert as any).issuerDetails || {},
-        serialNumber: (cert as any).serialNumber || '',
-        validFrom: new Date(),
-        validTo: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+      const updateData: any = {
+        certificate: certFiles.certificate,
+        privateKey: certFiles.privateKey,
+        chain: certFiles.chain,
+        commonName: certInfo.commonName,
+        sans: certInfo.sans,
+        issuer: certInfo.issuer,
+        validFrom: certInfo.validFrom,
+        validTo: certInfo.validTo,
+        status: 'valid',
+        acmeProvider: toPrismaAcmeProvider(provider),
+        updatedAt: new Date(),
       };
-      certificate = cert.certificate;
-      privateKey = cert.privateKey;
-      chain = cert.chain;
+
+      if (certInfo.subject) updateData.subject = certInfo.subject;
+      if (certInfo.subjectDetails) updateData.subjectDetails = certInfo.subjectDetails;
+      if (certInfo.issuerDetails) updateData.issuerDetails = certInfo.issuerDetails;
+      if (certInfo.serialNumber) updateData.serialNumber = certInfo.serialNumber;
+
+      const updatedCert = await sslRepository.update(id, updateData);
+      await sslRepository.updateDomainSSLExpiry(cert.domainId, updatedCert.validTo);
+
+      try {
+        await nginxReloadService.autoReload(true);
+      } catch (reloadError) {
+        logger.warn(`Nginx reload after SSL renew for ${cert.domain.name} failed:`, reloadError);
+      }
+
+      await this.logActivity(
+        userId,
+        `Renewed SSL certificate for ${cert.domain.name}`,
+        ip,
+        userAgent,
+        true
+      );
+
+      logger.info(`SSL certificate renewed for ${cert.domain.name} by user ${userId}`);
+
+      return updatedCert;
+    } catch (error: any) {
+      logger.error(`Failed to renew certificate for ${cert.domain.name}:`, error);
+      await this.logActivity(
+        userId,
+        `Failed to renew SSL certificate for ${cert.domain.name}: ${error.message}`,
+        ip,
+        userAgent,
+        false
+      );
+      throw new Error(`Failed to renew SSL certificate: ${error.message}`);
     }
-
-    // Update certificate expiry
-    const updateData: any = {
-      certificate,
-      privateKey,
-      chain,
-      commonName: certInfo.commonName,
-      sans: certInfo.sans,
-      issuer: certInfo.issuer,
-      validFrom: certInfo.validFrom,
-      validTo: certInfo.validTo,
-      status: 'valid',
-      updatedAt: new Date(),
-    };
-
-    // Add optional fields if they exist
-    if (certInfo.subject) updateData.subject = certInfo.subject;
-    if (certInfo.subjectDetails) updateData.subjectDetails = certInfo.subjectDetails;
-    if (certInfo.issuerDetails) updateData.issuerDetails = certInfo.issuerDetails;
-    if (certInfo.serialNumber) updateData.serialNumber = certInfo.serialNumber;
-
-    const updatedCert = await sslRepository.update(id, updateData);
-
-    // Update domain SSL expiry
-    await sslRepository.updateDomainSSLExpiry(cert.domainId, updatedCert.validTo);
-
-    // Log activity
-    await this.logActivity(
-      userId,
-      `Renewed SSL certificate for ${cert.domain.name}`,
-      ip,
-      userAgent,
-      true
-    );
-
-    logger.info(`SSL certificate renewed for ${cert.domain.name} by user ${userId}`);
-
-    return updatedCert;
   }
 
   /**
