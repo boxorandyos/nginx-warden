@@ -3,7 +3,9 @@ import { AuthRequest } from '../../middleware/auth';
 import logger from '../../utils/logger';
 import { SystemConfigService } from './system-config.service';
 import { listHostNetworkInterfaceNames } from './network-interfaces.service';
-import { readSystemUpdateLogTail, runGithubUpdateAndInstallScript } from './system-update.service';
+import { parseMaintenanceKind } from './maintenance';
+import { triggerSlaveUpgrades } from './slave-upgrade.service';
+import { readSystemUpdateLogTail, runGithubUpdateAndInstallScript, runPackageUpdateScript } from './system-update.service';
 import { ResponseUtil } from '../../shared/utils/response.util';
 import { ValidationError, NotFoundError } from '../../shared/errors/app-error';
 
@@ -67,6 +69,34 @@ export const runSystemUpdate = async (req: AuthRequest, res: Response): Promise<
     logger.error('System update error:', error);
     const message = error instanceof Error ? error.message : 'System update failed';
     ResponseUtil.error(res, message, 500);
+  }
+};
+
+/** Upgrade the fixed host package allowlist. Admin only. */
+export const runPackageUpdate = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const result = await runPackageUpdateScript();
+    logger.info('Package update from UI', { userId: req.user?.userId, scheduled: result.scheduled });
+    ResponseUtil.success(res, result, 'Package update scheduled');
+  } catch (error: unknown) {
+    logger.error('Package update error:', error);
+    const message = error instanceof Error ? error.message : 'Package update failed';
+    ResponseUtil.error(res, message, 500);
+  }
+};
+
+export const upgradeSlaves = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const kind = parseMaintenanceKind(req.body?.kind ?? 'product');
+    const nodeId = req.body?.nodeId ? String(req.body.nodeId) : undefined;
+    const results = await triggerSlaveUpgrades(kind, nodeId);
+    logger.info('Slave upgrades triggered', { userId: req.user?.userId, kind, count: results.length });
+    ResponseUtil.success(res, { kind, results }, 'Slave upgrades requested');
+  } catch (error: unknown) {
+    logger.error('Slave upgrade error:', error);
+    const message = error instanceof Error ? error.message : 'Slave upgrade failed';
+    const status = message.includes('kind must') || message.includes('not found') || message.includes('Only the master') ? 400 : 500;
+    ResponseUtil.error(res, message, status);
   }
 };
 

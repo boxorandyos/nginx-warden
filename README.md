@@ -84,7 +84,7 @@ sudo bash scripts/update.sh
 
 `update.sh` stops services, installs deps, runs migrations, rebuilds, restarts systemd units, and updates nginx config from `config/nginx.conf` when present.
 
-**UI:** Admins can run **Download & update** (git pull + `update.sh`) from Configuration; requires API as root and may take many minutes—avoid short proxy timeouts.
+**UI:** Admins can run **Download & update** (git pull + `update.sh`) from Configuration; requires API as root and may take many minutes—avoid short proxy timeouts. **Update packages** upgrades installed packages from a fixed list (`nginx`, `keepalived`, `crowdsec`, `ca-certificates`, `openssl`) via `scripts/update-packages.sh`. **Upgrade slaves** asks each enabled slave to run the product update. The slave must be in slave mode and must have the master's API key configured. The slave receives `POST /api/slave/maintenance`.
 
 ---
 
