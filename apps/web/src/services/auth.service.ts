@@ -6,6 +6,7 @@ import { UserProfile, ActivityLog, TwoFactorAuth, AccountSession } from '@/types
 export interface LoginRequest {
   username: string;
   password: string;
+  providerId?: string;
 }
 
 export interface LoginResponse {

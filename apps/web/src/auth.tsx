@@ -6,7 +6,7 @@ import { useAutoTokenRefresh } from '@/hooks/useAutoTokenRefresh'
 
 export interface AuthContext {
   isAuthenticated: boolean
-  login: (username: string, password: string) => Promise<LoginResponse>
+  login: (username: string, password: string, providerId?: string) => Promise<LoginResponse>
   loginWith2FA: (userId: string, token: string) => Promise<LoginResponse>
   logout: () => Promise<void>
   user: UserProfile | null
@@ -43,10 +43,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [clearAuth])
 
-  const login = React.useCallback(async (username: string, password: string): Promise<LoginResponse> => {
+  const login = React.useCallback(async (username: string, password: string, providerId?: string): Promise<LoginResponse> => {
     setIsLoading(true)
     try {
-      const response = await authService.login({ username, password })
+      const response = await authService.login({ username, password, providerId })
 
       if (response.requires2FA) {
         // Don't set user yet if 2FA is required

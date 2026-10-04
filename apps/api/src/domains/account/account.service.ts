@@ -125,6 +125,9 @@ export class AccountService {
     }
 
     // Verify current password
+    if (!user.password) {
+      throw new ValidationError('Password change is not available for externally authenticated accounts');
+    }
     const isPasswordValid = await comparePassword(currentPassword, user.password);
     if (!isPasswordValid) {
       // Log failed attempt

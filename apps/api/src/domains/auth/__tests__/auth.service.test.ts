@@ -23,6 +23,93 @@ vi.mock('../../../utils/logger', () => ({
   },
 }));
 
+vi.mock('../../identity/services/policy.service', async () => {
+  const { AuthProviderType, AuthRequirementTarget } = await import('@prisma/client');
+  return {
+    ensureIdentityDefaults: vi.fn().mockResolvedValue(undefined),
+    resolvePolicy: vi.fn().mockResolvedValue({
+      id: 'policy-1',
+      slug: 'admin_portal',
+      name: 'Admin portal',
+      target: AuthRequirementTarget.admin_portal,
+      domainId: null,
+      requireMfa: false,
+      groupAllow: [],
+      groupDeny: [],
+      sessionTtlMinutes: null,
+      allowedProviderIds: ['local-provider'],
+      allowedProviderTypes: [AuthProviderType.local],
+    }),
+    evaluateGroupRestrictions: vi.fn().mockReturnValue({ allowed: true }),
+    createPasswordIdp: vi.fn().mockImplementation(async () => {
+      const passwordUtil = await import('../../../utils/password');
+      return {
+        type: AuthProviderType.local,
+        providerId: 'local-provider',
+        idp: {
+          type: AuthProviderType.local,
+          authenticate: async ({ username, password }: any) => {
+            const ok = await passwordUtil.comparePassword(password, 'hashedpassword');
+            if (!ok) {
+              return { ok: false, reason: 'Invalid credentials' };
+            }
+            return {
+              ok: true,
+              identity: {
+                username,
+                email: `${username}@test`,
+                fullName: username,
+                groups: [],
+              },
+            };
+          },
+        },
+      };
+    }),
+    getIdpForType: vi.fn(),
+    ADMIN_PORTAL_SLUG: 'admin_portal',
+  };
+});
+
+vi.mock('../../identity/services/auth-audit-abuse.service', () => ({
+  authAbuseService: {
+    assertAllowed: vi.fn().mockResolvedValue(undefined),
+    recordFailure: vi.fn().mockResolvedValue({
+      userLocked: false,
+      ipLocked: false,
+      ipFirewallBanned: false,
+      circuitOpen: false,
+    }),
+    recordSuccess: vi.fn().mockResolvedValue(undefined),
+  },
+  authAuditService: {
+    write: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
+vi.mock('../../identity/services/jit-user.service', () => ({
+  upsertExternalUser: vi.fn(),
+}));
+
+vi.mock('../../../config/database', () => ({
+  default: {
+    authProviderConfig: {
+      findUnique: vi.fn().mockResolvedValue({
+        id: 'local-provider',
+        type: 'local',
+        enabled: true,
+        name: 'Local',
+      }),
+      findFirst: vi.fn().mockResolvedValue({
+        id: 'local-provider',
+        type: 'local',
+        enabled: true,
+        name: 'Local',
+      }),
+    },
+  },
+}));
+
 describe('AuthService', () => {
   let authService: AuthService;
   let authRepository: AuthRepository;
@@ -40,6 +127,9 @@ describe('AuthService', () => {
     timezone: 'Asia/Ho_Chi_Minh',
     language: 'en',
     isFirstLogin: false,
+    authProvider: 'local' as const,
+    externalId: null,
+    externalGroups: [] as string[],
     lastLogin: null,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -166,6 +256,7 @@ describe('AuthService', () => {
       const inactiveUser = { ...mockUser, status: 'inactive' as const };
 
       vi.spyOn(authRepository, 'findUserByUsername').mockResolvedValue(inactiveUser);
+      vi.spyOn(passwordUtil, 'comparePassword').mockResolvedValue(true);
 
       // Act & Assert
       await expect(authService.login(loginDto, mockMetadata)).rejects.toThrow(

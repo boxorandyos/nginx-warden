@@ -141,7 +141,8 @@ describe('Auth Integration Tests', () => {
       expect(response.body.errors).toBeDefined();
     });
 
-    it('should return 400 for username less than 3 characters', async () => {
+    it('should return 401 for short username that fails authentication', async () => {
+      // Username min length is not enforced — LDAP/OIDC usernames may be short
       const response = await request(app)
         .post('/api/auth/login')
         .send({
@@ -149,12 +150,12 @@ describe('Auth Integration Tests', () => {
           password: 'password123',
         });
 
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(401);
       expect(response.body.success).toBe(false);
-      expect(response.body.errors).toBeDefined();
     });
 
-    it('should return 400 for password less than 6 characters', async () => {
+    it('should return 401 for short password that fails authentication', async () => {
+      // Password min length is not enforced at the DTO layer (IdP-specific)
       const response = await request(app)
         .post('/api/auth/login')
         .send({
@@ -162,9 +163,8 @@ describe('Auth Integration Tests', () => {
           password: '12345',
         });
 
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(401);
       expect(response.body.success).toBe(false);
-      expect(response.body.errors).toBeDefined();
     });
   });
 

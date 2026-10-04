@@ -1,4 +1,4 @@
-import { comparePassword, hashPassword } from '../../utils/password';
+import { hashPassword } from '../../utils/password';
 import {
   generateAccessToken,
   generateRefreshToken,
@@ -32,6 +32,16 @@ import {
   ValidationError,
   NotFoundError,
 } from '../../shared/errors/app-error';
+import { AuthProviderType, AuthRequirementTarget, AuthAuditOutcome } from '@prisma/client';
+import {
+  ensureIdentityDefaults,
+  resolvePolicy,
+  evaluateGroupRestrictions,
+  createPasswordIdp,
+} from '../identity/services/policy.service';
+import { authAbuseService, authAuditService } from '../identity/services/auth-audit-abuse.service';
+import { upsertExternalUser } from '../identity/services/jit-user.service';
+import prisma from '../../config/database';
 
 /**
  * Auth service - Contains all authentication business logic
@@ -43,85 +53,217 @@ export class AuthService {
   constructor(private readonly authRepository: AuthRepository) {}
 
   /**
-   * Login user with username and password
+   * Password login for admin portal via Local or LDAP (OIDC uses browser redirect).
    */
   async login(
     dto: LoginDto,
     metadata: RequestMetadata
   ): Promise<LoginResponse> {
-    const { username, password } = dto;
+    const { username, password, providerId: requestedProviderId } = dto;
 
-    // Find user
-    const user = await this.authRepository.findUserByUsername(username);
+    await ensureIdentityDefaults();
 
-    if (!user) {
-      // Log failed attempt without user ID (user doesn't exist)
+    try {
+      await authAbuseService.assertAllowed({ ip: metadata.ip });
+    } catch (e: any) {
+      await authAuditService.write({
+        outcome: AuthAuditOutcome.blocked,
+        message: `Login blocked: ${e.message}`,
+        ip: metadata.ip,
+        userAgent: metadata.userAgent,
+        username,
+      });
+      throw new AuthenticationError(this.mapAbuseMessage(e.message));
+    }
+
+    const policy = await resolvePolicy(AuthRequirementTarget.admin_portal);
+    if (!policy) {
+      throw new AuthenticationError('Authentication is not configured');
+    }
+
+    // Resolve password-capable provider
+    let providerRow = requestedProviderId
+      ? await prisma.authProviderConfig.findUnique({ where: { id: requestedProviderId } })
+      : await prisma.authProviderConfig.findFirst({
+          where: {
+            type: AuthProviderType.local,
+            enabled: true,
+            id: { in: policy.allowedProviderIds },
+          },
+        });
+
+    if (!providerRow) {
+      providerRow = await prisma.authProviderConfig.findFirst({
+        where: {
+          enabled: true,
+          id: { in: policy.allowedProviderIds },
+          type: { in: [AuthProviderType.local, AuthProviderType.ldap] },
+        },
+        orderBy: { priority: 'asc' },
+      });
+    }
+
+    if (!providerRow || !providerRow.enabled) {
+      throw new AuthenticationError('No password identity provider is available for the admin portal');
+    }
+    if (!policy.allowedProviderIds.includes(providerRow.id)) {
+      throw new AuthenticationError('Selected identity provider is not allowed by policy');
+    }
+    if (
+      providerRow.type !== AuthProviderType.local &&
+      providerRow.type !== AuthProviderType.ldap
+    ) {
+      throw new AuthenticationError('Use the SSO button for this identity provider');
+    }
+
+    const idpBundle = await createPasswordIdp(providerRow.id);
+    if (!idpBundle) {
+      throw new AuthenticationError('Identity provider is unavailable');
+    }
+
+    const authResult = await idpBundle.idp.authenticate({ username, password });
+    const existingUser = await this.authRepository.findUserByUsername(username);
+
+    if (!authResult.ok) {
       await this.authRepository.createActivityLog(
-        null,
+        existingUser?.id ?? null,
         `Failed login attempt for username: ${username}`,
         'security',
         metadata,
         false,
-        'Invalid username'
+        authResult.reason
       );
+
+      const abuse = await authAbuseService.recordFailure({
+        userId: existingUser?.id ?? null,
+        ip: metadata.ip,
+        username,
+      });
+
+      await authAuditService.write({
+        outcome:
+          abuse.userLocked || abuse.ipLocked
+            ? AuthAuditOutcome.lockout
+            : AuthAuditOutcome.failure,
+        message: `Failed login: ${authResult.reason}`,
+        ip: metadata.ip,
+        userAgent: metadata.userAgent,
+        username,
+        userId: existingUser?.id ?? null,
+        policyId: policy.id,
+        providerType: providerRow.type,
+        providerId: providerRow.id,
+        details: abuse,
+      });
 
       throw new AuthenticationError('Invalid credentials');
     }
 
-    // Check if user is active
-    if (user.status !== 'active') {
+    const user =
+      providerRow.type === AuthProviderType.local
+        ? await this.authRepository.findUserByUsername(authResult.identity.username)
+        : await upsertExternalUser(providerRow.type, authResult.identity);
+
+    if (!user) {
+      throw new AuthenticationError('Invalid credentials');
+    }
+
+    // Attach twoFactor if missing from JIT shape
+    const userWith2fa =
+      'twoFactor' in user && user.twoFactor !== undefined
+        ? user
+        : await this.authRepository.findUserById(user.id);
+
+    if (!userWith2fa) {
+      throw new AuthenticationError('Invalid credentials');
+    }
+
+    try {
+      await authAbuseService.assertAllowed({ userId: userWith2fa.id, ip: metadata.ip });
+    } catch (e: any) {
+      throw new AuthenticationError(this.mapAbuseMessage(e.message));
+    }
+
+    if (userWith2fa.status !== 'active') {
       throw new AuthorizationError('Account is inactive or suspended');
     }
 
-    // Verify password
-    const isPasswordValid = await comparePassword(password, user.password);
-    if (!isPasswordValid) {
-      // Log failed attempt
-      await this.authRepository.createActivityLog(
-        user.id,
-        'Failed login attempt',
-        'security',
-        metadata,
-        false,
-        'Invalid password'
-      );
-
-      throw new AuthenticationError('Invalid credentials');
+    const groups = [
+      ...((userWith2fa as any).externalGroups || []),
+      ...authResult.identity.groups,
+    ];
+    const groupCheck = evaluateGroupRestrictions(policy, groups);
+    if (!groupCheck.allowed) {
+      await authAuditService.write({
+        outcome: AuthAuditOutcome.blocked,
+        message: groupCheck.reason || 'Group restriction',
+        ip: metadata.ip,
+        userAgent: metadata.userAgent,
+        username,
+        userId: userWith2fa.id,
+        policyId: policy.id,
+        providerType: providerRow.type,
+      });
+      throw new AuthorizationError(groupCheck.reason || 'Access denied by group policy');
     }
 
-    // Check if this is first login
-    if (user.isFirstLogin) {
+    await authAbuseService.recordSuccess({ userId: userWith2fa.id, ip: metadata.ip });
+
+    if (userWith2fa.isFirstLogin && providerRow.type === AuthProviderType.local) {
       logger.info(`User ${username} is logging in for the first time`);
-
-      const userData = this.mapUserData(user);
-      const tempToken = generateTempToken(user.id);
-      
-      const result: LoginFirstTimeResult = {
+      const userData = this.mapUserData(userWith2fa);
+      return {
         requirePasswordChange: true,
-        userId: user.id,
-        tempToken,
+        userId: userWith2fa.id,
+        tempToken: generateTempToken(userWith2fa.id),
         user: userData,
       };
-
-      return result;
     }
 
-    // Check if 2FA is enabled
-    if (user.twoFactor?.enabled) {
-      logger.info(`User ${username} requires 2FA verification`);
-
-      const userData = this.mapUserData(user);
-      const result: Login2FARequiredResult = {
-        requires2FA: true,
-        userId: user.id,
-        user: userData,
-      };
-
-      return result;
+    const requireMfa = policy.requireMfa || Boolean(userWith2fa.twoFactor?.enabled);
+    if (requireMfa) {
+      if (userWith2fa.twoFactor?.enabled) {
+        return {
+          requires2FA: true,
+          userId: userWith2fa.id,
+          user: this.mapUserData(userWith2fa),
+        };
+      }
+      if (policy.requireMfa) {
+        throw new AuthorizationError(
+          'Multi-factor authentication is required. Enroll 2FA before using this portal policy.'
+        );
+      }
     }
 
-    // Generate tokens and complete login
-    return this.completeLogin(user, metadata);
+    await authAuditService.write({
+      outcome: AuthAuditOutcome.success,
+      message: 'Login succeeded',
+      ip: metadata.ip,
+      userAgent: metadata.userAgent,
+      username: userWith2fa.username,
+      userId: userWith2fa.id,
+      policyId: policy.id,
+      providerType: providerRow.type,
+      providerId: providerRow.id,
+    });
+
+    return this.completeLogin(userWith2fa as any, metadata);
+  }
+
+  private mapAbuseMessage(code: string): string {
+    switch (code) {
+      case 'AUTH_CIRCUIT_OPEN':
+        return 'Authentication temporarily disabled due to too many failed attempts. Try again later or contact an administrator.';
+      case 'AUTH_IP_BLOCKED':
+      case 'AUTH_IP_LOCKED':
+        return 'Too many failed attempts from this network address. Try again later.';
+      case 'AUTH_USER_BLOCKED':
+      case 'AUTH_USER_LOCKED':
+        return 'This account is temporarily locked due to failed login attempts.';
+      default:
+        return 'Authentication denied';
+    }
   }
 
   /**
@@ -306,6 +448,11 @@ export class AuthService {
       ...result,
       require2FASetup: !user.twoFactor?.enabled,
     };
+  }
+
+  /** Used by OIDC callback to issue portal tokens after external IdP success */
+  async completeLoginPublic(user: any, metadata: RequestMetadata, is2FA = false): Promise<LoginResult> {
+    return this.completeLogin(user, metadata, is2FA);
   }
 
   /**

@@ -15,3 +15,4 @@ export { default as SSL } from './SSL';
 export { SSLStats } from './SSLStats';
 export { SSLTable } from './SSLTable';
 export { default as Users } from './Users';
+export { default as Authentication } from './Authentication';
