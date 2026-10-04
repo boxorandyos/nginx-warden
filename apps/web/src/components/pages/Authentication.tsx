@@ -25,6 +25,7 @@ import {
   type AuthPolicy,
   type AuthProviderConfig,
 } from '@/services/identity.service';
+import { getDomains } from '@/services/domain.service';
 
 function providerTypeLabel(type: string) {
   switch (type) {
@@ -39,6 +40,15 @@ function providerTypeLabel(type: string) {
     default:
       return type;
   }
+}
+
+function isConfigured(p: AuthProviderConfig): boolean {
+  const c = (p.config || {}) as Record<string, unknown>;
+  if (p.type === 'local') return true;
+  if (p.type === 'ldap') return Boolean(c.url && c.searchBase);
+  if (p.type === 'oidc_entra') return Boolean((c.issuer || c.entraTenantId) && c.clientId);
+  if (p.type === 'oidc_generic') return Boolean(c.issuer && c.clientId);
+  return false;
 }
 
 export default function Authentication() {
@@ -64,6 +74,15 @@ export default function Authentication() {
       const res = await identityService.listPolicies();
       if (!res.success || !res.data) throw new Error(res.message || 'Failed');
       return res.data;
+    },
+    enabled: isAdmin,
+  });
+
+  const domainsQuery = useQuery({
+    queryKey: ['identity', 'domains-for-gateway'],
+    queryFn: async () => {
+      const res = await getDomains({ limit: 200, sortBy: 'name', sortOrder: 'asc' });
+      return res.data || [];
     },
     enabled: isAdmin,
   });
@@ -114,6 +133,27 @@ export default function Authentication() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const saveProviderConfig = useMutation({
+    mutationFn: async ({
+      id,
+      config,
+      name,
+    }: {
+      id: string;
+      config: Record<string, unknown>;
+      name?: string;
+    }) => {
+      const res = await identityService.updateProvider(id, { config, name });
+      if (!res.success) throw new Error(res.message || 'Failed');
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['identity'] });
+      toast.success(t('identity.toast.configSaved'));
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const savePolicy = useMutation({
     mutationFn: async ({
       id,
@@ -129,6 +169,19 @@ export default function Authentication() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['identity'] });
       toast.success(t('identity.toast.policyUpdated'));
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const createGateway = useMutation({
+    mutationFn: async (body: Parameters<typeof identityService.createGatewayPolicy>[0]) => {
+      const res = await identityService.createGatewayPolicy(body);
+      if (!res.success) throw new Error(res.message || 'Failed');
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['identity'] });
+      toast.success(t('identity.toast.gatewayCreated'));
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -163,6 +216,15 @@ export default function Authentication() {
     () => policiesQuery.data?.find((p) => p.slug === 'admin_portal'),
     [policiesQuery.data]
   );
+
+  const domainsWithGateway = useMemo(() => {
+    const set = new Set(
+      (policiesQuery.data || [])
+        .filter((p) => p.target === 'access_gateway' && p.domainId)
+        .map((p) => p.domainId as string)
+    );
+    return set;
+  }, [policiesQuery.data]);
 
   if (!isAdmin) {
     return (
@@ -206,38 +268,19 @@ export default function Authentication() {
             <AlertTitle>{t('identity.providers.noticeTitle')}</AlertTitle>
             <AlertDescription>{t('identity.providers.noticeBody')}</AlertDescription>
           </Alert>
-          <div className="grid gap-4 md:grid-cols-2">
-            {(providersQuery.data || []).map((p: AuthProviderConfig) => {
-              const comingSoon = (p.config as any)?.status === 'coming_soon';
-              return (
-                <Card key={p.id}>
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <CardTitle className="text-base">{p.name}</CardTitle>
-                      <Badge variant={p.enabled ? 'default' : 'secondary'}>
-                        {providerTypeLabel(p.type)}
-                      </Badge>
-                    </div>
-                    <CardDescription>
-                      {comingSoon
-                        ? t('identity.providers.comingSoon')
-                        : p.isSystem
-                          ? t('identity.providers.system')
-                          : t('identity.providers.optional')}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex items-center justify-between">
-                    <Label htmlFor={`en-${p.id}`}>{t('identity.providers.enabled')}</Label>
-                    <Switch
-                      id={`en-${p.id}`}
-                      checked={p.enabled}
-                      disabled={comingSoon || toggleProvider.isPending}
-                      onCheckedChange={(enabled) => toggleProvider.mutate({ id: p.id, enabled })}
-                    />
-                  </CardContent>
-                </Card>
-              );
-            })}
+          <div className="grid gap-4 lg:grid-cols-2">
+            {(providersQuery.data || []).map((p: AuthProviderConfig) => (
+              <ProviderCard
+                key={p.id}
+                provider={p}
+                toggling={toggleProvider.isPending}
+                saving={saveProviderConfig.isPending}
+                onToggle={(enabled) => toggleProvider.mutate({ id: p.id, enabled })}
+                onSaveConfig={(config) =>
+                  saveProviderConfig.mutate({ id: p.id, config })
+                }
+              />
+            ))}
           </div>
         </TabsContent>
 
@@ -247,6 +290,7 @@ export default function Authentication() {
               key={policy.id}
               policy={policy}
               providers={providersQuery.data || []}
+              domains={domainsQuery.data || []}
               saving={savePolicy.isPending}
               onSave={(body) => savePolicy.mutate({ id: policy.id, body })}
               isAdminPortal={policy.slug === 'admin_portal'}
@@ -257,6 +301,13 @@ export default function Authentication() {
               <AlertTitle>{t('identity.policies.missingPortal')}</AlertTitle>
             </Alert>
           )}
+          <CreateGatewayCard
+            providers={providersQuery.data || []}
+            domains={(domainsQuery.data || []).filter((d) => !domainsWithGateway.has(d.id))}
+            allDomainsCount={(domainsQuery.data || []).length}
+            saving={createGateway.isPending}
+            onCreate={(body) => createGateway.mutate(body)}
+          />
         </TabsContent>
 
         <TabsContent value="abuse" className="space-y-4 mt-4">
@@ -378,15 +429,342 @@ export default function Authentication() {
   );
 }
 
+function ProviderCard({
+  provider,
+  toggling,
+  saving,
+  onToggle,
+  onSaveConfig,
+}: {
+  provider: AuthProviderConfig;
+  toggling: boolean;
+  saving: boolean;
+  onToggle: (enabled: boolean) => void;
+  onSaveConfig: (config: Record<string, unknown>) => void;
+}) {
+  const { t } = useTranslation();
+  const configured = isConfigured(provider);
+  const cfg = (provider.config || {}) as Record<string, unknown>;
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="text-base">{provider.name}</CardTitle>
+          <Badge variant={provider.enabled ? 'default' : 'secondary'}>
+            {providerTypeLabel(provider.type)}
+          </Badge>
+        </div>
+        <CardDescription>
+          {provider.isSystem
+            ? t('identity.providers.system')
+            : configured
+              ? t('identity.providers.optional')
+              : t('identity.providers.notConfigured')}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <Label htmlFor={`en-${provider.id}`}>{t('identity.providers.enabled')}</Label>
+          <Switch
+            id={`en-${provider.id}`}
+            checked={provider.enabled}
+            disabled={toggling || (!configured && !provider.enabled)}
+            onCheckedChange={onToggle}
+          />
+        </div>
+
+        {provider.type === 'local' && (
+          <p className="text-sm text-muted-foreground">{t('identity.providers.localHint')}</p>
+        )}
+
+        {provider.type === 'ldap' && (
+          <LdapConfigForm
+            initial={cfg}
+            saving={saving}
+            onSave={onSaveConfig}
+          />
+        )}
+
+        {(provider.type === 'oidc_entra' || provider.type === 'oidc_generic') && (
+          <OidcConfigForm
+            type={provider.type}
+            initial={cfg}
+            saving={saving}
+            onSave={onSaveConfig}
+          />
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function LdapConfigForm({
+  initial,
+  saving,
+  onSave,
+}: {
+  initial: Record<string, unknown>;
+  saving: boolean;
+  onSave: (config: Record<string, unknown>) => void;
+}) {
+  const { t } = useTranslation();
+  const [form, setForm] = useState({
+    url: String(initial.url || ''),
+    bindDn: String(initial.bindDn || ''),
+    bindPassword: '',
+    searchBase: String(initial.searchBase || ''),
+    searchFilter: String(initial.searchFilter || '(uid={{username}})'),
+    groupBase: String(initial.groupBase || ''),
+    groupFilter: String(initial.groupFilter || ''),
+    startTls: Boolean(initial.startTls),
+    tlsRejectUnauthorized: initial.tlsRejectUnauthorized !== false,
+  });
+
+  const set = (key: keyof typeof form, value: string | boolean) =>
+    setForm((f) => ({ ...f, [key]: value }));
+
+  return (
+    <div className="space-y-3 border-t pt-3">
+      <div>
+        <Label htmlFor="ldap-url">{t('identity.providers.ldapUrl')}</Label>
+        <Input
+          id="ldap-url"
+          className="mt-1"
+          value={form.url}
+          onChange={(e) => set('url', e.target.value)}
+          placeholder="ldaps://ldap.example.com:636"
+        />
+      </div>
+      <div className="grid md:grid-cols-2 gap-3">
+        <div>
+          <Label htmlFor="ldap-bind">{t('identity.providers.bindDn')}</Label>
+          <Input
+            id="ldap-bind"
+            className="mt-1"
+            value={form.bindDn}
+            onChange={(e) => set('bindDn', e.target.value)}
+            placeholder="cn=svc,ou=people,dc=example,dc=com"
+          />
+        </div>
+        <div>
+          <Label htmlFor="ldap-pw">{t('identity.providers.bindPassword')}</Label>
+          <Input
+            id="ldap-pw"
+            type="password"
+            className="mt-1"
+            value={form.bindPassword}
+            onChange={(e) => set('bindPassword', e.target.value)}
+            placeholder={
+              initial.bindPasswordSet ? t('identity.providers.secretKeep') : undefined
+            }
+          />
+        </div>
+      </div>
+      <div>
+        <Label htmlFor="ldap-base">{t('identity.providers.searchBase')}</Label>
+        <Input
+          id="ldap-base"
+          className="mt-1"
+          value={form.searchBase}
+          onChange={(e) => set('searchBase', e.target.value)}
+          placeholder="ou=people,dc=example,dc=com"
+        />
+      </div>
+      <div>
+        <Label htmlFor="ldap-filter">{t('identity.providers.searchFilter')}</Label>
+        <Input
+          id="ldap-filter"
+          className="mt-1 font-mono text-sm"
+          value={form.searchFilter}
+          onChange={(e) => set('searchFilter', e.target.value)}
+        />
+      </div>
+      <div className="grid md:grid-cols-2 gap-3">
+        <div>
+          <Label htmlFor="ldap-gbase">{t('identity.providers.groupBase')}</Label>
+          <Input
+            id="ldap-gbase"
+            className="mt-1"
+            value={form.groupBase}
+            onChange={(e) => set('groupBase', e.target.value)}
+            placeholder="ou=groups,dc=example,dc=com"
+          />
+        </div>
+        <div>
+          <Label htmlFor="ldap-gfilter">{t('identity.providers.groupFilter')}</Label>
+          <Input
+            id="ldap-gfilter"
+            className="mt-1 font-mono text-sm"
+            value={form.groupFilter}
+            onChange={(e) => set('groupFilter', e.target.value)}
+            placeholder="(member={{dn}})"
+          />
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-6">
+        <label className="flex items-center gap-2 text-sm">
+          <Switch checked={form.startTls} onCheckedChange={(v) => set('startTls', v)} />
+          {t('identity.providers.startTls')}
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <Switch
+            checked={form.tlsRejectUnauthorized}
+            onCheckedChange={(v) => set('tlsRejectUnauthorized', v)}
+          />
+          {t('identity.providers.tlsReject')}
+        </label>
+      </div>
+      <Button
+        disabled={saving}
+        onClick={() => {
+          const payload: Record<string, unknown> = {
+            url: form.url.trim(),
+            bindDn: form.bindDn.trim() || undefined,
+            searchBase: form.searchBase.trim(),
+            searchFilter: form.searchFilter.trim(),
+            groupBase: form.groupBase.trim() || undefined,
+            groupFilter: form.groupFilter.trim() || undefined,
+            startTls: form.startTls,
+            tlsRejectUnauthorized: form.tlsRejectUnauthorized,
+          };
+          if (form.bindPassword) payload.bindPassword = form.bindPassword;
+          onSave(payload);
+        }}
+      >
+        {t('identity.providers.configure')}
+      </Button>
+    </div>
+  );
+}
+
+function OidcConfigForm({
+  type,
+  initial,
+  saving,
+  onSave,
+}: {
+  type: 'oidc_entra' | 'oidc_generic';
+  initial: Record<string, unknown>;
+  saving: boolean;
+  onSave: (config: Record<string, unknown>) => void;
+}) {
+  const { t } = useTranslation();
+  const [form, setForm] = useState({
+    issuer: String(initial.issuer || ''),
+    entraTenantId: String(initial.entraTenantId || ''),
+    clientId: String(initial.clientId || ''),
+    clientSecret: '',
+    scopes: String(initial.scopes || 'openid profile email'),
+    groupClaim: String(initial.groupClaim || 'groups'),
+  });
+
+  const set = (key: keyof typeof form, value: string) =>
+    setForm((f) => ({ ...f, [key]: value }));
+
+  return (
+    <div className="space-y-3 border-t pt-3">
+      {type === 'oidc_entra' && (
+        <div>
+          <Label htmlFor="entra-tenant">{t('identity.providers.entraTenant')}</Label>
+          <Input
+            id="entra-tenant"
+            className="mt-1"
+            value={form.entraTenantId}
+            onChange={(e) => set('entraTenantId', e.target.value)}
+            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+          />
+        </div>
+      )}
+      <div>
+        <Label htmlFor="oidc-issuer">{t('identity.providers.issuer')}</Label>
+        <Input
+          id="oidc-issuer"
+          className="mt-1"
+          value={form.issuer}
+          onChange={(e) => set('issuer', e.target.value)}
+          placeholder={
+            type === 'oidc_entra'
+              ? 'https://login.microsoftonline.com/{tenant}/v2.0 (optional if tenant set)'
+              : 'https://idp.example.com'
+          }
+        />
+      </div>
+      <div className="grid md:grid-cols-2 gap-3">
+        <div>
+          <Label htmlFor="oidc-cid">{t('identity.providers.clientId')}</Label>
+          <Input
+            id="oidc-cid"
+            className="mt-1"
+            value={form.clientId}
+            onChange={(e) => set('clientId', e.target.value)}
+          />
+        </div>
+        <div>
+          <Label htmlFor="oidc-secret">{t('identity.providers.clientSecret')}</Label>
+          <Input
+            id="oidc-secret"
+            type="password"
+            className="mt-1"
+            value={form.clientSecret}
+            onChange={(e) => set('clientSecret', e.target.value)}
+            placeholder={
+              initial.clientSecretSet ? t('identity.providers.secretKeep') : undefined
+            }
+          />
+        </div>
+      </div>
+      <div className="grid md:grid-cols-2 gap-3">
+        <div>
+          <Label htmlFor="oidc-scopes">{t('identity.providers.scopes')}</Label>
+          <Input
+            id="oidc-scopes"
+            className="mt-1"
+            value={form.scopes}
+            onChange={(e) => set('scopes', e.target.value)}
+          />
+        </div>
+        <div>
+          <Label htmlFor="oidc-groups">{t('identity.providers.groupClaim')}</Label>
+          <Input
+            id="oidc-groups"
+            className="mt-1"
+            value={form.groupClaim}
+            onChange={(e) => set('groupClaim', e.target.value)}
+          />
+        </div>
+      </div>
+      <Button
+        disabled={saving}
+        onClick={() => {
+          const payload: Record<string, unknown> = {
+            issuer: form.issuer.trim() || undefined,
+            entraTenantId: form.entraTenantId.trim() || undefined,
+            clientId: form.clientId.trim(),
+            scopes: form.scopes.trim(),
+            groupClaim: form.groupClaim.trim() || 'groups',
+          };
+          if (form.clientSecret) payload.clientSecret = form.clientSecret;
+          onSave(payload);
+        }}
+      >
+        {t('identity.providers.configure')}
+      </Button>
+    </div>
+  );
+}
+
 function PolicyCard({
   policy,
   providers,
+  domains,
   saving,
   onSave,
   isAdminPortal,
 }: {
   policy: AuthPolicy;
   providers: AuthProviderConfig[];
+  domains: Array<{ id: string; name: string }>;
   saving: boolean;
   onSave: (body: Parameters<typeof identityService.updatePolicy>[1]) => void;
   isAdminPortal: boolean;
@@ -397,6 +775,9 @@ function PolicyCard({
   const [groupDeny, setGroupDeny] = useState(policy.groupDeny.join('\n'));
   const selected = new Set(policy.providers.map((p) => p.providerId));
   const [providerIds, setProviderIds] = useState<string[]>([...selected]);
+
+  const domainName =
+    policy.domainId && domains.find((d) => d.id === policy.domainId)?.name;
 
   const toggleProvider = (id: string) => {
     setProviderIds((prev) =>
@@ -410,7 +791,11 @@ function PolicyCard({
         <CardTitle className="text-base">{policy.name}</CardTitle>
         <CardDescription>
           {policy.slug}
-          {isAdminPortal ? ` — ${t('identity.policies.portalHint')}` : ''}
+          {isAdminPortal
+            ? ` — ${t('identity.policies.portalHint')}`
+            : policy.target === 'access_gateway'
+              ? ` — ${domainName || policy.domainId} · ${t('identity.policies.gatewayHint')}`
+              : ''}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -425,7 +810,7 @@ function PolicyCard({
                     type="checkbox"
                     checked={providerIds.includes(p.id)}
                     onChange={() => toggleProvider(p.id)}
-                    disabled={(p.config as any)?.status === 'coming_soon'}
+                    disabled={!p.enabled && !selected.has(p.id)}
                   />
                   {p.name}
                 </label>
@@ -477,6 +862,147 @@ function PolicyCard({
         >
           {t('identity.policies.save')}
         </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function CreateGatewayCard({
+  providers,
+  domains,
+  allDomainsCount,
+  saving,
+  onCreate,
+}: {
+  providers: AuthProviderConfig[];
+  domains: Array<{ id: string; name: string }>;
+  allDomainsCount: number;
+  saving: boolean;
+  onCreate: (body: Parameters<typeof identityService.createGatewayPolicy>[0]) => void;
+}) {
+  const { t } = useTranslation();
+  const enabledProviders = providers.filter((p) => p.enabled);
+  const [name, setName] = useState('');
+  const [domainId, setDomainId] = useState('');
+  const [providerIds, setProviderIds] = useState<string[]>(
+    enabledProviders.map((p) => p.id)
+  );
+  const [groupAllow, setGroupAllow] = useState('');
+  const [groupDeny, setGroupDeny] = useState('');
+
+  const toggleProvider = (id: string) => {
+    setProviderIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{t('identity.policies.createGateway')}</CardTitle>
+        <CardDescription>{t('identity.policies.createGatewayHint')}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {allDomainsCount === 0 ? (
+          <p className="text-sm text-muted-foreground">{t('identity.policies.noDomains')}</p>
+        ) : domains.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {t('identity.policies.allGatewaysExist')}
+          </p>
+        ) : (
+          <>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="gw-name">{t('identity.policies.gatewayName')}</Label>
+                <Input
+                  id="gw-name"
+                  className="mt-1"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Internal apps gateway"
+                />
+              </div>
+              <div>
+                <Label htmlFor="gw-domain">{t('identity.policies.domain')}</Label>
+                <select
+                  id="gw-domain"
+                  className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={domainId}
+                  onChange={(e) => {
+                    setDomainId(e.target.value);
+                    const d = domains.find((x) => x.id === e.target.value);
+                    if (d && !name) setName(`Gateway: ${d.name}`);
+                  }}
+                >
+                  <option value="">{t('identity.policies.selectDomain')}</option>
+                  {domains.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div>
+              <Label className="mb-2 block">{t('identity.policies.allowedIdps')}</Label>
+              <div className="flex flex-wrap gap-3">
+                {enabledProviders.map((p) => (
+                  <label key={p.id} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={providerIds.includes(p.id)}
+                      onChange={() => toggleProvider(p.id)}
+                    />
+                    {p.name}
+                  </label>
+                ))}
+                {enabledProviders.length === 0 && (
+                  <span className="text-sm text-muted-foreground">
+                    Enable at least one identity provider first.
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <Label>{t('identity.policies.groupAllow')}</Label>
+                <textarea
+                  className="mt-1 w-full min-h-[72px] border rounded-md p-2 text-sm bg-background"
+                  value={groupAllow}
+                  onChange={(e) => setGroupAllow(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label>{t('identity.policies.groupDeny')}</Label>
+                <textarea
+                  className="mt-1 w-full min-h-[72px] border rounded-md p-2 text-sm bg-background"
+                  value={groupDeny}
+                  onChange={(e) => setGroupDeny(e.target.value)}
+                />
+              </div>
+            </div>
+            <Button
+              disabled={saving || !domainId || !name.trim() || providerIds.length === 0}
+              onClick={() =>
+                onCreate({
+                  name: name.trim(),
+                  domainId,
+                  providerIds,
+                  groupAllow: groupAllow
+                    .split('\n')
+                    .map((s) => s.trim())
+                    .filter(Boolean),
+                  groupDeny: groupDeny
+                    .split('\n')
+                    .map((s) => s.trim())
+                    .filter(Boolean),
+                })
+              }
+            >
+              {t('identity.policies.create')}
+            </Button>
+          </>
+        )}
       </CardContent>
     </Card>
   );

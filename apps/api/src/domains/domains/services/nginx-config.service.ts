@@ -15,6 +15,8 @@ import {
 } from './custom-locations.util';
 import { http2ListenModeFromNginxV, type Http2ListenMode } from './nginx-http2.util';
 import { getMergedCorsOrigins } from '../../system/portal-access-sync.service';
+import { resolvePolicy } from '../../identity/services/policy.service';
+import { AuthRequirementTarget } from '@prisma/client';
 
 const execAsync = promisify(exec);
 
@@ -386,7 +388,8 @@ ${realIpBlock}
     // Client max body size
     const clientMaxBodySize = this.getClientMaxBodySize(domain);
 
-    const customLocations = this.generateCustomLocations(domain);
+    const gateway = await this.generateAccessGatewayNginx(domain);
+    const customLocations = this.generateCustomLocations(domain, gateway.authDirectives);
 
     // HTTP server with full proxy configuration
     return `
@@ -409,9 +412,10 @@ ${this.generateModsecurityCrowdsecServerBlock(domain)}
     access_log /var/log/nginx/${domain.name}_access.log main;
     error_log /var/log/nginx/${domain.name}_error.log warn;
 
+${gateway.locations}
 ${customLocations}
     location / {
-        ${this.generateLimitLocationDirectives(domain)}${this.generateProxyHeaders(domain)}
+        ${gateway.authDirectives}${this.generateLimitLocationDirectives(domain)}${this.generateProxyHeaders(domain)}${gateway.userHeader}
         proxy_pass ${upstreamProtocol}://${upstreamName}_backend;
 
         ${this.generateHttpsBackendSettings(domain)}
@@ -454,8 +458,9 @@ ${customLocations}
     const listenHttp2Suffix = http2Mode === 'listen' ? ' http2' : '';
     const http2DirectiveLine = http2Mode === 'directive' ? '\n    http2 on;' : '';
     
-    // Generate custom locations if configured
-    const customLocations = this.generateCustomLocations(domain);
+    const gateway = await this.generateAccessGatewayNginx(domain);
+    // Generate custom locations if configured (inherit gateway auth when enabled)
+    const customLocations = this.generateCustomLocations(domain, gateway.authDirectives);
     
     // Generate Access Lists block
     const accessListsBlock = this.generateAccessListsBlock(domain);
@@ -500,9 +505,10 @@ ${this.generateModsecurityCrowdsecServerBlock(domain)}
     access_log /var/log/nginx/${domain.name}_ssl_access.log main;
     error_log /var/log/nginx/${domain.name}_ssl_error.log warn;
 
+${gateway.locations}
 ${customLocations}
     location / {
-        ${domain.grpcEnabled ? this.generateGrpcLocationBlock(domain, upstreamName) : this.generateProxyLocationBlock(domain, upstreamName, upstreamProtocol)}
+        ${gateway.authDirectives}${gateway.userHeader}${domain.grpcEnabled ? this.generateGrpcLocationBlock(domain, upstreamName) : this.generateProxyLocationBlock(domain, upstreamName, upstreamProtocol)}
     }
 
     location /nginx_health {
@@ -512,6 +518,62 @@ ${customLocations}
     }
 }
 `;
+  }
+
+  /**
+   * Access gateway: nginx auth_request → Warden verify + /_warden/ login UI
+   */
+  private async generateAccessGatewayNginx(
+    domain: DomainWithRelations
+  ): Promise<{ locations: string; authDirectives: string; userHeader: string }> {
+    try {
+      const policy = await resolvePolicy(AuthRequirementTarget.access_gateway, domain.id);
+      if (!policy) {
+        return { locations: '', authDirectives: '', userHeader: '' };
+      }
+    } catch {
+      return { locations: '', authDirectives: '', userHeader: '' };
+    }
+
+    const apiPort = parseInt(process.env.WARDEN_API_PORT || process.env.PORT || '3001', 10) || 3001;
+    return {
+      authDirectives: `auth_request /_warden_auth;
+        error_page 401 = @warden_auth_login;
+        auth_request_set $warden_user $upstream_http_x_warden_user;
+        `,
+      userHeader: `proxy_set_header X-Warden-User $warden_user;
+        `,
+      locations: `
+    # Nginx Warden access gateway
+    location = /_warden_auth {
+        internal;
+        proxy_pass http://127.0.0.1:${apiPort}/api/identity/gateway/verify;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header Cookie $http_cookie;
+        proxy_set_header X-Original-URI $request_uri;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    location @warden_auth_login {
+        return 302 /_warden/login?rd=$scheme://$host$request_uri;
+    }
+
+    location ^~ /_warden/ {
+        proxy_pass http://127.0.0.1:${apiPort}/api/identity/gateway/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header Cookie $http_cookie;
+        proxy_set_header Content-Type $content_type;
+    }
+`,
+    };
   }
 
   /**
@@ -734,8 +796,15 @@ ${healthCheckSettings}`;
   /**
    * Generate custom location blocks
    */
-  private generateCustomLocations(domain: DomainWithRelations): string {
+  private generateCustomLocations(
+    domain: DomainWithRelations,
+    authDirectives = ''
+  ): string {
     const portalApiBlock = this.generateWardenPortalApiLocation(domain);
+    const gatewayAuth = authDirectives
+      ? `${authDirectives}proxy_set_header X-Warden-User $warden_user;
+        `
+      : '';
 
     if (!domain.customLocations || typeof domain.customLocations !== 'object') {
       return portalApiBlock;
@@ -768,7 +837,7 @@ ${healthCheckSettings}`;
           
           return `
     location ${locationMatch} {
-        ${config}
+        ${gatewayAuth}${config}
     }`;
         }
 
@@ -803,7 +872,7 @@ ${healthCheckSettings}`;
 
           return `
     location ${locationMatch} {
-        ${this.generateProxyHeaders(domain)}
+        ${gatewayAuth}${this.generateProxyHeaders(domain)}
         ${proxyDirective}
         ${config ? '\n        ' + config : ''}
     }`;
@@ -819,7 +888,7 @@ ${healthCheckSettings}`;
         if (hasProxyDirective) {
           return `
     location ${locationMatch} {
-        ${config}
+        ${gatewayAuth}${config}
     }`;
         }
 
@@ -843,7 +912,7 @@ ${healthCheckSettings}`;
 
             return `
     location ${locationMatch} {
-        ${this.generateProxyHeaders(domain)}
+        ${gatewayAuth}${this.generateProxyHeaders(domain)}
         ${proxyDirective}
         ${config ? '\n        ' + config : ''}
     }`;
@@ -854,7 +923,7 @@ ${healthCheckSettings}`;
         if (config && config.trim() !== '') {
           return `
     location ${locationMatch} {
-        ${config}
+        ${gatewayAuth}${config}
     }`;
         }
 

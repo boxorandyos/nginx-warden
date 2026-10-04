@@ -26,10 +26,6 @@ export class LocalIdentityProvider implements IdentityProvider {
       return { ok: false, reason: 'Invalid credentials' };
     }
 
-    if (user.status !== 'active') {
-      return { ok: false, reason: 'Account is inactive or suspended' };
-    }
-
     const valid = await comparePassword(input.password, user.password);
     if (!valid) {
       return { ok: false, reason: 'Invalid credentials' };

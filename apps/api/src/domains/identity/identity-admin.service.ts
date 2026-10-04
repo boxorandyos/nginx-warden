@@ -15,7 +15,14 @@ export class IdentityAdminService {
 
   async listProviders() {
     await ensureIdentityDefaults();
-    return prisma.authProviderConfig.findMany({ orderBy: [{ priority: 'asc' }, { name: 'asc' }] });
+    const { maskProviderConfig } = await import('./services/provider-config.util');
+    const rows = await prisma.authProviderConfig.findMany({
+      orderBy: [{ priority: 'asc' }, { name: 'asc' }],
+    });
+    return rows.map((r) => ({
+      ...r,
+      config: maskProviderConfig(r.config),
+    }));
   }
 
   async updateProvider(
@@ -25,7 +32,18 @@ export class IdentityAdminService {
     const existing = await prisma.authProviderConfig.findUnique({ where: { id } });
     if (!existing) throw new NotFoundError('Auth provider not found');
 
-    // Local may be disabled only if at least one other enabled provider is linked to admin_portal
+    const {
+      mergeProviderConfig,
+      validateLdapConfig,
+      validateOidcConfig,
+      maskProviderConfig,
+    } = await import('./services/provider-config.util');
+
+    let nextConfig = (existing.config as Record<string, unknown>) || {};
+    if (data.config && typeof data.config === 'object') {
+      nextConfig = mergeProviderConfig(nextConfig, data.config as Record<string, unknown>);
+    }
+
     if (existing.type === AuthProviderType.local && data.enabled === false) {
       const policy = await prisma.authPolicy.findUnique({
         where: { slug: ADMIN_PORTAL_SLUG },
@@ -33,7 +51,10 @@ export class IdentityAdminService {
       });
       const others =
         policy?.providers.filter(
-          (p) => p.providerId !== id && p.provider.enabled && p.provider.type !== AuthProviderType.local
+          (p) =>
+            p.providerId !== id &&
+            p.provider.enabled &&
+            p.provider.type !== AuthProviderType.local
         ) ?? [];
       if (others.length === 0) {
         throw new ValidationError(
@@ -42,23 +63,32 @@ export class IdentityAdminService {
       }
     }
 
-    // Stub providers (coming_soon) cannot be enabled yet
-    const cfg = (existing.config ?? {}) as Record<string, unknown>;
-    if (data.enabled === true && cfg.status === 'coming_soon') {
-      throw new ValidationError(
-        `${existing.name} is not implemented yet. Local authentication remains available.`
-      );
+    const enabling = data.enabled === true;
+    if (enabling || data.config) {
+      if (existing.type === AuthProviderType.ldap) {
+        validateLdapConfig(nextConfig);
+      }
+      if (
+        existing.type === AuthProviderType.oidc_entra ||
+        existing.type === AuthProviderType.oidc_generic
+      ) {
+        const cfg = validateOidcConfig(existing.type, nextConfig);
+        if (enabling && !cfg.clientSecret) {
+          throw new ValidationError('Configure an OIDC client secret before enabling this provider');
+        }
+      }
     }
 
-    return prisma.authProviderConfig.update({
+    const updated = await prisma.authProviderConfig.update({
       where: { id },
       data: {
         enabled: data.enabled,
         name: data.name,
-        config: data.config === undefined ? undefined : (data.config as Prisma.InputJsonValue),
+        config: nextConfig as Prisma.InputJsonValue,
         priority: data.priority,
       },
     });
+    return { ...updated, config: maskProviderConfig(updated.config) };
   }
 
   async listPolicies() {
@@ -140,8 +170,24 @@ export class IdentityAdminService {
     groupDeny?: string[];
     description?: string;
   }) {
+    if (!data.name?.trim()) {
+      throw new ValidationError('Gateway policy name is required');
+    }
+    if (!data.domainId?.trim()) {
+      throw new ValidationError('Select a domain for the access gateway');
+    }
     if (!data.providerIds?.length) {
       throw new ValidationError('Select at least one identity provider');
+    }
+    const domain = await prisma.domain.findUnique({ where: { id: data.domainId } });
+    if (!domain) {
+      throw new ValidationError('Domain not found');
+    }
+    const providers = await prisma.authProviderConfig.findMany({
+      where: { id: { in: data.providerIds } },
+    });
+    if (providers.length !== data.providerIds.length) {
+      throw new ValidationError('One or more identity providers were not found');
     }
     const slug = `gateway:${data.domainId}`;
     const existing = await prisma.authPolicy.findUnique({ where: { slug } });
@@ -165,6 +211,34 @@ export class IdentityAdminService {
         },
       },
       include: { providers: { include: { provider: true } } },
+    }).then(async (policy) => {
+      // Regenerate nginx so auth_request is applied
+      try {
+        const domain = await prisma.domain.findUnique({
+          where: { id: data.domainId },
+          include: {
+            upstreams: true,
+            loadBalancer: true,
+            sslCertificate: true,
+            accessLists: { include: { accessList: true } },
+          },
+        });
+        if (domain) {
+          const { nginxConfigService } = await import(
+            '../domains/services/nginx-config.service'
+          );
+          await nginxConfigService.generateConfig(domain as any, { deferValidation: false });
+          const { nginxReloadService } = await import(
+            '../domains/services/nginx-reload.service'
+          );
+          await nginxReloadService.reload();
+        }
+      } catch (e) {
+        // Policy is saved; nginx may need manual regenerate
+        const logger = (await import('../../utils/logger')).default;
+        logger.warn('Gateway policy saved but nginx regenerate failed', e);
+      }
+      return policy;
     });
   }
 

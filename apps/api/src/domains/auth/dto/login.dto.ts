@@ -6,6 +6,8 @@ import { body, ValidationChain } from 'express-validator';
 export interface LoginDto {
   username: string;
   password: string;
+  /** Optional IdP id — defaults to Local when allowed */
+  providerId?: string;
 }
 
 /**
@@ -16,11 +18,12 @@ export const loginValidation: ValidationChain[] = [
     .trim()
     .notEmpty()
     .withMessage('Username is required')
-    .isLength({ min: 3 })
-    .withMessage('Username must be at least 3 characters'),
+    .isLength({ min: 1 })
+    .withMessage('Username is required'),
   body('password')
     .notEmpty()
     .withMessage('Password is required')
-    .isLength({ min: 6 })
-    .withMessage('Password must be at least 6 characters'),
+    .isLength({ min: 1 })
+    .withMessage('Password is required'),
+  body('providerId').optional().isString(),
 ];

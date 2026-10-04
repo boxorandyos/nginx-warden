@@ -33,7 +33,7 @@ export async function ensureIdentityDefaults(): Promise<void> {
     { type: AuthProviderType.oidc_entra, name: 'Microsoft Entra ID', priority: 30 },
     { type: AuthProviderType.oidc_generic, name: 'OpenID Connect', priority: 40 },
   ] as const) {
-    await prisma.authProviderConfig.upsert({
+    const row = await prisma.authProviderConfig.upsert({
       where: { type_name: { type: stub.type, name: stub.name } },
       create: {
         type: stub.type,
@@ -41,10 +41,18 @@ export async function ensureIdentityDefaults(): Promise<void> {
         enabled: false,
         isSystem: false,
         priority: stub.priority,
-        config: { status: 'coming_soon' },
+        config: {},
       },
       update: {},
     });
+    const cfg = (row.config as Record<string, unknown>) || {};
+    if (cfg.status === 'coming_soon') {
+      const { status: _removed, ...rest } = cfg;
+      await prisma.authProviderConfig.update({
+        where: { id: row.id },
+        data: { config: rest as Prisma.InputJsonValue },
+      });
+    }
   }
 
   let policy = await prisma.authPolicy.findUnique({ where: { slug: ADMIN_PORTAL_SLUG } });
@@ -120,4 +128,22 @@ export function getIdpForType(type: AuthProviderType): IdentityProvider | null {
     default:
       return null;
   }
+}
+
+/** Build IdP instance from DB provider row (Local / LDAP). OIDC is browser-based. */
+export async function createPasswordIdp(
+  providerId: string
+): Promise<{ type: AuthProviderType; idp: IdentityProvider; providerId: string } | null> {
+  const row = await prisma.authProviderConfig.findUnique({ where: { id: providerId } });
+  if (!row || !row.enabled) return null;
+  if (row.type === AuthProviderType.local) {
+    return { type: row.type, idp: new LocalIdentityProvider(), providerId: row.id };
+  }
+  if (row.type === AuthProviderType.ldap) {
+    const { validateLdapConfig } = await import('./provider-config.util');
+    const { LdapIdentityProvider } = await import('./ldap.idp');
+    const cfg = validateLdapConfig((row.config as any) || {});
+    return { type: row.type, idp: new LdapIdentityProvider(cfg), providerId: row.id };
+  }
+  return null;
 }

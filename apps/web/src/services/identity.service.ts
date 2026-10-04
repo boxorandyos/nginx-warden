@@ -107,6 +107,18 @@ export const identityService = {
     const res = await api.patch(`/identity/policies/${id}`, body);
     return res.data;
   },
+  createGatewayPolicy: async (body: {
+    name: string;
+    domainId: string;
+    providerIds: string[];
+    requireMfa?: boolean;
+    groupAllow?: string[];
+    groupDeny?: string[];
+    description?: string;
+  }): Promise<ApiResponse<AuthPolicy>> => {
+    const res = await api.post('/identity/policies/gateway', body);
+    return res.data;
+  },
   listAuditLogs: async (params?: {
     page?: number;
     outcome?: string;

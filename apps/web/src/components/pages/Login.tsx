@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter, useRouterState } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle2 } from 'lucide-react';
@@ -12,8 +12,11 @@ import { Route } from '@/routes/login';
 import ForcePasswordChange from './ForcePasswordChange';
 import Force2FASetup from './Force2FASetup';
 import { WardenLogo } from '@/components/brand/WardenLogo';
+import api, { getApiBaseUrl } from '@/services/api';
 
 type LoginStep = 'login' | 'passwordChange' | '2faSetup' | '2faVerify';
+
+type LoginProvider = { id: string; type: string; name: string };
 
 export default function Login() {
   const { t } = useTranslation();
@@ -29,8 +32,32 @@ export default function Login() {
   const [currentStep, setCurrentStep] = useState<LoginStep>('login');
   const [userId, setUserId] = useState('');
   const [tempToken, setTempToken] = useState('');
+  const [providers, setProviders] = useState<LoginProvider[]>([]);
+  const [providerId, setProviderId] = useState('');
 
   const search = Route.useSearch();
+
+  useEffect(() => {
+    api
+      .get('/identity/login-providers')
+      .then((res) => {
+        const list = (res.data?.data || []) as LoginProvider[];
+        setProviders(list);
+        const local = list.find((p) => p.type === 'local');
+        const firstPwd = list.find((p) => p.type === 'local' || p.type === 'ldap');
+        setProviderId(local?.id || firstPwd?.id || '');
+      })
+      .catch(() => setProviders([]));
+  }, []);
+
+  useEffect(() => {
+    if (search.error) {
+      toast.error(search.error);
+    }
+  }, [search.error]);
+
+  const passwordProviders = providers.filter((p) => p.type === 'local' || p.type === 'ldap');
+  const oidcProviders = providers.filter((p) => p.type === 'oidc_entra' || p.type === 'oidc_generic');
 
   const isLoggingIn = isLoading || isSubmitting || authLoading;
 
@@ -49,7 +76,7 @@ export default function Login() {
 
         await navigate({ to: search.redirect || '/dashboard' });
       } else {
-        const response = await login(username, password);
+        const response = await login(username, password, providerId || undefined);
 
         if (response.requirePasswordChange && response.tempToken) {
           setUserId(response.userId || '');
@@ -166,8 +193,25 @@ export default function Login() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
-              {currentStep === 'login' && (
+              {currentStep === 'login' && passwordProviders.length > 0 && (
                 <>
+                  {passwordProviders.length > 1 && (
+                    <div className="space-y-2">
+                      <Label htmlFor="provider">{t('login.provider')}</Label>
+                      <select
+                        id="provider"
+                        className="flex h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
+                        value={providerId}
+                        onChange={(e) => setProviderId(e.target.value)}
+                      >
+                        {passwordProviders.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div className="space-y-2">
                     <Label htmlFor="username">{t('login.username')}</Label>
                     <Input
@@ -216,13 +260,37 @@ export default function Login() {
                 </div>
               )}
 
-              <Button
-                type="submit"
-                className="h-11 w-full font-semibold shadow-md shadow-primary/15"
-                disabled={isLoggingIn || (currentStep === '2faVerify' && twoFactor.length !== 6)}
-              >
-                {isLoggingIn ? t('login.working') : currentStep === '2faVerify' ? t('login.verifySignIn') : t('login.signin')}
-              </Button>
+              {(currentStep === '2faVerify' || passwordProviders.length > 0) && (
+                <Button
+                  type="submit"
+                  className="h-11 w-full font-semibold shadow-md shadow-primary/15"
+                  disabled={isLoggingIn || (currentStep === '2faVerify' && twoFactor.length !== 6)}
+                >
+                  {isLoggingIn ? t('login.working') : currentStep === '2faVerify' ? t('login.verifySignIn') : t('login.signin')}
+                </Button>
+              )}
+
+              {currentStep === 'login' && oidcProviders.length > 0 && (
+                <div className={`space-y-2 ${passwordProviders.length > 0 ? 'pt-2' : ''}`}>
+                  {passwordProviders.length > 0 && (
+                    <p className="text-center text-xs text-muted-foreground">{t('login.orSso')}</p>
+                  )}
+                  {oidcProviders.map((p) => (
+                    <Button
+                      key={p.id}
+                      type="button"
+                      variant={passwordProviders.length > 0 ? 'outline' : 'default'}
+                      className="w-full h-11"
+                      onClick={() => {
+                        const returnTo = search.redirect || '/dashboard';
+                        window.location.href = `${getApiBaseUrl()}/identity/oidc/${p.id}/start?returnTo=${encodeURIComponent(returnTo)}`;
+                      }}
+                    >
+                      {p.name}
+                    </Button>
+                  ))}
+                </div>
+              )}
 
               {currentStep === '2faVerify' && (
                 <Button
