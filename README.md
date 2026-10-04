@@ -28,6 +28,7 @@ The **supported production target** is **Linux** (Ubuntu/Debian-style) with **ro
 | **Backend env** | `apps/api/.env` |
 | **Frontend build env** | `apps/web/.env` (e.g. `VITE_API_URL=auto`) |
 | **Saved deploy secrets** | `/root/.nginx-warden-credentials` (after `deploy.sh`) |
+| **Release go/no-go check** | `./scripts/release/go-no-go.sh` |
 
 Install path = **wherever you clone the repo** (e.g. `/var/www/html/nginx-warden`). There is no fixed `/opt/...` path unless you put it there yourself.
 
@@ -64,6 +65,7 @@ The script installs dependencies, builds API + UI, configures **systemd** units 
 ### Configuration highlights
 
 - **API / DB / JWT:** `apps/api/.env` — see `apps/api/.env.example`.
+- **API hardening knobs:** `TRUST_PROXY`, body limits, and HTTP timeout env vars in `apps/api/.env.example`.
 - **CORS + portal access:** set allowed UI origins in **Fleet → Configuration**; merge with `CORS_ORIGIN` in `apps/api/.env`.
 - **API bind:** `HOST=0.0.0.0` (default) so the API listens on all interfaces; see `apps/api/.env.example`.
 - **SPA → API URL:** `VITE_API_URL=auto` (default) uses the **same browser hostname** and port **3001** for API calls; use `VITE_API_USE_FIXED` + explicit `VITE_API_URL` only if the API is on a different host.

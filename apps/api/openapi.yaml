@@ -54,24 +54,123 @@ paths:
                   type: string
                   format: password
                   example: secretpassword
-                twoFactorCode:
+                providerId:
                   type: string
-                  example: "123456"
-              required: [username, password, twoFactorCode]
+                  description: Optional identity provider id
+              required: [username, password]
       responses:
         '200':
           description: Login successful
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  token:
-                    type: string
-                  user:
-                    $ref: '#/components/schemas/User'
+                $ref: '#/components/schemas/AuthLoginResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Too many authentication attempts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/verify-2fa:
+    post:
+      tags: [auth]
+      summary: Verify 2FA code and complete login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthVerify2FARequest'
+      responses:
+        '200':
+          description: 2FA verification successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthLoginResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Invalid 2FA token
+        '429':
+          description: Too many verification attempts
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Refresh access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthRefreshRequest'
+      responses:
+        '200':
+          description: Access token refreshed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthRefreshResponse'
+        '400':
+          description: Validation error
+        '401':
+          description: Invalid refresh token
+        '429':
+          description: Too many refresh requests
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Logout and revoke current refresh token
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthLogoutRequest'
+      responses:
+        '200':
+          description: Logout successful
+
+  /auth/first-login/change-password:
+    post:
+      tags: [auth]
+      summary: Change password during first login flow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthFirstLoginPasswordRequest'
+      responses:
+        '200':
+          description: Password changed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthLoginResponse'
+        '400':
+          description: Validation error
+        '429':
+          description: Too many requests
 
   /domains:
     get:
@@ -524,6 +623,85 @@ components:
       bearerFormat: JWT
 
   schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+
+    AuthLoginResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            user:
+              $ref: '#/components/schemas/User'
+            accessToken:
+              type: string
+            refreshToken:
+              type: string
+
+    AuthVerify2FARequest:
+      type: object
+      required: [userId, token]
+      properties:
+        userId:
+          type: string
+        token:
+          type: string
+          minLength: 6
+          maxLength: 6
+
+    AuthRefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+
+    AuthRefreshResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            accessToken:
+              type: string
+            refreshToken:
+              type: string
+
+    AuthLogoutRequest:
+      type: object
+      properties:
+        refreshToken:
+          type: string
+
+    AuthFirstLoginPasswordRequest:
+      type: object
+      required: [userId, tempToken, newPassword]
+      properties:
+        userId:
+          type: string
+        tempToken:
+          type: string
+        newPassword:
+          type: string
+          minLength: 8
+
     Domain:
       type: object
       properties:

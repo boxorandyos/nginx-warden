@@ -19,6 +19,10 @@ import { nginxSslHealService } from './domains/ssl/services/nginx-ssl-heal.servi
 import { ensureIdentityDefaults } from './domains/identity/services/policy.service';
 
 const app: Application = express();
+app.disable('x-powered-by');
+if (config.server.trustProxy) {
+  app.set('trust proxy', 1);
+}
 let server: ReturnType<Application['listen']> | null = null;
 let monitoringTimer: NodeJS.Timeout | null = null;
 let slaveStatusTimer: NodeJS.Timeout | null = null;
@@ -26,7 +30,12 @@ let backupSchedulerTimer: NodeJS.Timeout | null = null;
 let sslSchedulerTimer: NodeJS.Timeout | null = null;
 
 // Security middleware
-// app.use(helmet());
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+  })
+);
 
 // CORS — env origins plus portal access URLs from database (see Configuration page)
 // Denied origins still get OPTIONS 204 from the cors package, but without
@@ -54,8 +63,8 @@ app.use(cors({
   credentials: true,
 }));
 // Body parser
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: config.server.jsonLimit }));
+app.use(express.urlencoded({ extended: true, limit: config.server.urlEncodedLimit }));
 app.use(cookieParser());
 
 // Logging
@@ -153,6 +162,9 @@ async function startServer(): Promise<void> {
     logger.error('Failed to start slave sync scheduler:', error);
   }
   });
+  server.requestTimeout = config.server.requestTimeoutMs;
+  server.headersTimeout = config.server.headersTimeoutMs;
+  server.keepAliveTimeout = config.server.keepAliveTimeoutMs;
 }
 
 startServer().catch((err) => {

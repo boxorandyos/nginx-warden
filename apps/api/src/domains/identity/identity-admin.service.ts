@@ -44,6 +44,18 @@ export class IdentityAdminService {
       nextConfig = mergeProviderConfig(nextConfig, data.config as Record<string, unknown>);
     }
 
+    if (data.name !== undefined) {
+      const trimmed = data.name.trim();
+      if (!trimmed) throw new ValidationError('Provider name cannot be empty');
+      data.name = trimmed;
+    }
+
+    if (data.priority !== undefined) {
+      if (!Number.isInteger(data.priority) || data.priority < 0 || data.priority > 1000) {
+        throw new ValidationError('Provider priority must be an integer between 0 and 1000');
+      }
+    }
+
     if (existing.type === AuthProviderType.local && data.enabled === false) {
       const policy = await prisma.authPolicy.findUnique({
         where: { slug: ADMIN_PORTAL_SLUG },

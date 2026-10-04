@@ -1,0 +1,29 @@
+groups:
+  - name: nginx-warden-api
+    rules:
+      - alert: NginxWardenApiDown
+        expr: up{job="nginx-warden-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Nginx Warden API target is down
+          description: Prometheus has not been able to scrape the API for 2 minutes.
+
+      - alert: NginxWardenAuthFailureSpike
+        expr: increase(nginx_warden_auth_failures_total[10m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Authentication failures are spiking
+          description: More than 100 auth failures were observed in 10 minutes.
+
+      - alert: NginxWardenAuthLockoutSpike
+        expr: increase(nginx_warden_auth_lockouts_total[15m]) > 25
+        for: 5m
+        labels:
+          severity: high
+        annotations:
+          summary: Authentication lockouts increased sharply
+          description: Lockout events exceeded baseline over a 15-minute window.

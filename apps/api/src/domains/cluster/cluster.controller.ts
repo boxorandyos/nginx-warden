@@ -3,12 +3,21 @@ import { AuthRequest } from '../../middleware/auth';
 import { SlaveRequest } from './cluster.types';
 import { clusterService } from './cluster.service';
 import logger from '../../utils/logger';
+import { validationResult } from 'express-validator';
 
 /**
  * Register new slave node
  */
 export const registerSlaveNode = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({
+        success: false,
+        errors: errors.array(),
+      });
+      return;
+    }
     const { name, host, port, syncInterval } = req.body;
 
     const result = await clusterService.registerSlaveNode(
