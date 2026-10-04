@@ -87,6 +87,10 @@ export interface SyncConfigData {
   networkLoadBalancers: SyncNetworkLoadBalancer[];
   /** Omitted in exports from older masters — import ignores if absent. */
   keepalived?: SyncKeepalived;
+  /** Omitted in exports from older masters — import ignores if absent. */
+  authProviders?: SyncAuthProvider[];
+  authPolicies?: SyncAuthPolicy[];
+  authAbuseSettings?: SyncAuthAbuseSettings | null;
 }
 
 /**
@@ -202,6 +206,59 @@ export interface SyncUser {
   fullName: string;
   password: string | null; // Already hashed; null for external IdP users
   role: string;
+  status?: string;
+  /** How this user authenticates — omitted by older masters (treat as local) */
+  authProvider?: string;
+  externalId?: string | null;
+  externalGroups?: string[];
+}
+
+/**
+ * Sync Auth Provider (LDAP/OIDC/Local config including secrets needed on slaves)
+ */
+export interface SyncAuthProvider {
+  type: string;
+  name: string;
+  enabled: boolean;
+  isSystem: boolean;
+  priority: number;
+  config: Record<string, unknown>;
+}
+
+/**
+ * Sync Auth Policy — gateway policies use domainName (not local domain IDs)
+ */
+export interface SyncAuthPolicy {
+  name: string;
+  /** Stable for admin_portal; for gateway policies this is recomputed on import */
+  slug: string;
+  target: string;
+  /** Domain hostname when target = access_gateway */
+  domainName?: string | null;
+  enabled: boolean;
+  requireMfa: boolean;
+  groupAllow: string[];
+  groupDeny: string[];
+  sessionTtlMinutes?: number | null;
+  description?: string | null;
+  /** Providers linked by type+name (stable across nodes) */
+  providers: Array<{ type: string; name: string }>;
+}
+
+/**
+ * Sync Auth Abuse Settings (thresholds only — not live lock state)
+ */
+export interface SyncAuthAbuseSettings {
+  maxFailuresPerUser: number;
+  userLockMinutes: number;
+  maxFailuresPerIp: number;
+  ipBanEnabled: boolean;
+  ipFirewallBanAfter: number;
+  maxFailuresBeforeAuthDisable: number;
+  authCircuitMinutes: number;
+  windowMinutes: number;
+  /** Circuit open-until is node-local runtime; omit from sync hash stability if null */
+  authDisabledUntil?: string | null;
 }
 
 /**
@@ -264,6 +321,9 @@ export interface ImportResults {
   networkLoadBalancers: number;
   nlbUpstreams: number;
   keepalived: number;
+  authProviders: number;
+  authPolicies: number;
+  authAbuseSettings: number;
   totalChanges: number;
 }
 

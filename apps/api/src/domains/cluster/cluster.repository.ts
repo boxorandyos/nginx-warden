@@ -205,6 +205,21 @@ export class ClusterRepository {
 
     const sc = await prisma.systemConfig.findFirst();
 
+    const authProviders = await prisma.authProviderConfig.findMany({
+      orderBy: [{ priority: 'asc' }, { name: 'asc' }],
+    });
+    const authPolicies = await prisma.authPolicy.findMany({
+      include: { providers: { include: { provider: true } } },
+      orderBy: { slug: 'asc' },
+    });
+    const domainById = new Map(
+      (await prisma.domain.findMany({ select: { id: true, name: true } })).map((d) => [
+        d.id,
+        d.name,
+      ])
+    );
+    const abuseSettings = await prisma.authAbuseSettings.findFirst();
+
     return {
       // Domains (NO timestamps, NO IDs)
       domains: domains.map(d => ({
@@ -290,13 +305,17 @@ export class ClusterRepository {
         enabled: a.enabled
       })),
 
-      // Users (NO timestamps, NO IDs, keep password hashes)
+      // Users (NO timestamps, NO IDs, keep password hashes + IdP linkage)
       users: users.map(u => ({
         email: u.email,
         username: u.username,
         fullName: u.fullName,
-        password: u.password, // Already hashed
-        role: u.role
+        password: u.password, // Already hashed; null for external IdP
+        role: u.role,
+        status: u.status,
+        authProvider: u.authProvider,
+        externalId: u.externalId,
+        externalGroups: u.externalGroups ?? [],
       })),
 
       // Network Load Balancers (NO timestamps, NO IDs)
@@ -337,7 +356,58 @@ export class ClusterRepository {
         authPass: sc?.keepalivedAuthPass ?? null,
         priorityMaster: sc?.keepalivedPriorityMaster ?? 150,
         priorityBackup: sc?.keepalivedPriorityBackup ?? 100,
-      } as SyncKeepalived
+      } as SyncKeepalived,
+
+      // Identity / multi-IdP (NO timestamps, NO IDs — gateway policies keyed by domain name)
+      authProviders: authProviders.map((p) => ({
+        type: p.type,
+        name: p.name,
+        enabled: p.enabled,
+        isSystem: p.isSystem,
+        priority: p.priority,
+        config: (p.config as Record<string, unknown>) || {},
+      })),
+      authPolicies: authPolicies
+        .map((policy) => {
+          const domainName = policy.domainId ? domainById.get(policy.domainId) ?? null : null;
+          // Normalize gateway slugs to domain name so master/slave hashes match
+          // (DB slug embeds local domain IDs which differ per node).
+          const slug =
+            policy.target === 'access_gateway' && domainName
+              ? `gateway:${domainName}`
+              : policy.slug;
+          return {
+            name: policy.name,
+            slug,
+            target: policy.target,
+            domainName,
+            enabled: policy.enabled,
+            requireMfa: policy.requireMfa,
+            groupAllow: policy.groupAllow,
+            groupDeny: policy.groupDeny,
+            sessionTtlMinutes: policy.sessionTtlMinutes,
+            description: policy.description,
+            providers: policy.providers.map((link) => ({
+              type: link.provider.type,
+              name: link.provider.name,
+            })),
+          };
+        })
+        .sort((a, b) => a.slug.localeCompare(b.slug)),
+      authAbuseSettings: abuseSettings
+        ? {
+            maxFailuresPerUser: abuseSettings.maxFailuresPerUser,
+            userLockMinutes: abuseSettings.userLockMinutes,
+            maxFailuresPerIp: abuseSettings.maxFailuresPerIp,
+            ipBanEnabled: abuseSettings.ipBanEnabled,
+            ipFirewallBanAfter: abuseSettings.ipFirewallBanAfter,
+            maxFailuresBeforeAuthDisable: abuseSettings.maxFailuresBeforeAuthDisable,
+            authCircuitMinutes: abuseSettings.authCircuitMinutes,
+            windowMinutes: abuseSettings.windowMinutes,
+            // Do not sync live circuit-open timestamp — keep hash stable / node-local
+            authDisabledUntil: null,
+          }
+        : null,
     };
   }
 
@@ -357,6 +427,9 @@ export class ClusterRepository {
       networkLoadBalancers: 0,
       nlbUpstreams: 0,
       keepalived: 0,
+      authProviders: 0,
+      authPolicies: 0,
+      authAbuseSettings: 0,
       totalChanges: 0
     };
 
@@ -557,23 +630,35 @@ export class ClusterRepository {
       }
     }
 
-    // 6. Import Users
+    // 6. Import Users (including IdP linkage for LDAP/OIDC shadow users)
     if (config.users && Array.isArray(config.users)) {
       for (const userData of config.users) {
+        const authProvider = (userData.authProvider as any) || 'local';
         await prisma.user.upsert({
           where: { email: userData.email },
           update: {
             username: userData.username,
             fullName: userData.fullName,
-            role: userData.role as any
-            // Don't update password for security
+            role: userData.role as any,
+            status: (userData.status as any) || undefined,
+            authProvider,
+            externalId: userData.externalId ?? undefined,
+            externalGroups: userData.externalGroups ?? [],
+            // Update password only when master sends a hash (local users);
+            // leave existing password when null (external IdP).
+            ...(userData.password ? { password: userData.password } : {}),
           },
           create: {
             email: userData.email,
             username: userData.username,
             fullName: userData.fullName,
-            password: userData.password, // Already hashed
-            role: userData.role as any
+            password: userData.password, // Already hashed; may be null for external IdP
+            role: userData.role as any,
+            status: (userData.status as any) || 'active',
+            authProvider,
+            externalId: userData.externalId ?? undefined,
+            externalGroups: userData.externalGroups ?? [],
+            isFirstLogin: authProvider === 'local',
           }
         });
         results.users++;
@@ -645,6 +730,136 @@ export class ClusterRepository {
       }
     }
 
+    // 9. Auth providers (Local / LDAP / OIDC) — upsert by type+name
+    if (config.authProviders && Array.isArray(config.authProviders)) {
+      for (const provider of config.authProviders) {
+        await prisma.authProviderConfig.upsert({
+          where: {
+            type_name: {
+              type: provider.type as any,
+              name: provider.name,
+            },
+          },
+          update: {
+            enabled: provider.enabled,
+            isSystem: provider.isSystem,
+            priority: provider.priority,
+            config: (provider.config as any) || {},
+          },
+          create: {
+            type: provider.type as any,
+            name: provider.name,
+            enabled: provider.enabled,
+            isSystem: provider.isSystem,
+            priority: provider.priority,
+            config: (provider.config as any) || {},
+          },
+        });
+        results.authProviders++;
+      }
+    }
+
+    // 10. Auth policies + provider links (gateway policies remapped by domain name)
+    if (config.authPolicies && Array.isArray(config.authPolicies)) {
+      const providerRows = await prisma.authProviderConfig.findMany();
+      const providerByKey = new Map(
+        providerRows.map((p) => [`${p.type}:${p.name}`, p.id])
+      );
+
+      for (const policyData of config.authPolicies) {
+        let domainId: string | null = null;
+        let slug = policyData.slug;
+
+        if (policyData.target === 'access_gateway') {
+          if (!policyData.domainName) continue;
+          const domain = await prisma.domain.findUnique({
+            where: { name: policyData.domainName },
+          });
+          if (!domain) continue;
+          domainId = domain.id;
+          // Slug embeds local domain id so it stays unique per node
+          slug = `gateway:${domain.id}`;
+        }
+
+        const policy = await prisma.authPolicy.upsert({
+          where: { slug },
+          update: {
+            name: policyData.name,
+            target: policyData.target as any,
+            domainId,
+            enabled: policyData.enabled,
+            requireMfa: policyData.requireMfa,
+            groupAllow: policyData.groupAllow ?? [],
+            groupDeny: policyData.groupDeny ?? [],
+            sessionTtlMinutes: policyData.sessionTtlMinutes ?? null,
+            description: policyData.description ?? null,
+          },
+          create: {
+            name: policyData.name,
+            slug,
+            target: policyData.target as any,
+            domainId,
+            enabled: policyData.enabled,
+            requireMfa: policyData.requireMfa,
+            groupAllow: policyData.groupAllow ?? [],
+            groupDeny: policyData.groupDeny ?? [],
+            sessionTtlMinutes: policyData.sessionTtlMinutes ?? null,
+            description: policyData.description ?? null,
+          },
+        });
+
+        await prisma.authPolicyProvider.deleteMany({ where: { policyId: policy.id } });
+        for (const link of policyData.providers || []) {
+          const providerId = providerByKey.get(`${link.type}:${link.name}`);
+          if (!providerId) continue;
+          await prisma.authPolicyProvider.create({
+            data: { policyId: policy.id, providerId },
+          });
+        }
+        results.authPolicies++;
+      }
+
+      // Drop gateway policies on this node that the master no longer has
+      const masterGatewayDomains = new Set(
+        config.authPolicies
+          .filter((p) => p.target === 'access_gateway' && p.domainName)
+          .map((p) => p.domainName as string)
+      );
+      const slaveGatewayPolicies = await prisma.authPolicy.findMany({
+        where: { target: 'access_gateway' },
+      });
+      for (const policy of slaveGatewayPolicies) {
+        const domain = policy.domainId
+          ? await prisma.domain.findUnique({ where: { id: policy.domainId } })
+          : null;
+        if (!domain || !masterGatewayDomains.has(domain.name)) {
+          await prisma.authPolicy.delete({ where: { id: policy.id } });
+        }
+      }
+    }
+
+    // 11. Abuse settings (thresholds only — not live lock/circuit state)
+    if (config.authAbuseSettings) {
+      const s = config.authAbuseSettings;
+      const existing = await prisma.authAbuseSettings.findFirst();
+      const data = {
+        maxFailuresPerUser: s.maxFailuresPerUser,
+        userLockMinutes: s.userLockMinutes,
+        maxFailuresPerIp: s.maxFailuresPerIp,
+        ipBanEnabled: s.ipBanEnabled,
+        ipFirewallBanAfter: s.ipFirewallBanAfter,
+        maxFailuresBeforeAuthDisable: s.maxFailuresBeforeAuthDisable,
+        authCircuitMinutes: s.authCircuitMinutes,
+        windowMinutes: s.windowMinutes,
+      };
+      if (existing) {
+        await prisma.authAbuseSettings.update({ where: { id: existing.id }, data });
+      } else {
+        await prisma.authAbuseSettings.create({ data });
+      }
+      results.authAbuseSettings = 1;
+    }
+
     results.totalChanges =
       results.domains +
       results.ssl +
@@ -653,7 +868,10 @@ export class ClusterRepository {
       results.acl +
       results.users +
       results.networkLoadBalancers +
-      results.keepalived;
+      results.keepalived +
+      results.authProviders +
+      results.authPolicies +
+      results.authAbuseSettings;
 
     return results;
   }

@@ -88,12 +88,15 @@ export function AppTopBar() {
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-[min(100%,20rem)] rounded-none border-r-foreground/10 p-0">
-              <SheetHeader className="border-b border-border px-4 py-4 text-left">
+            <SheetContent
+              side="left"
+              className="flex h-full w-[min(100%,20rem)] flex-col gap-0 overflow-hidden rounded-none border-r-foreground/10 p-0"
+            >
+              <SheetHeader className="shrink-0 border-b border-border px-4 py-4 text-left">
                 <SheetTitle className="sr-only">Navigation</SheetTitle>
                 <WardenLogo />
               </SheetHeader>
-              <nav className="flex flex-col gap-0 p-2">
+              <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2 pb-8">
                 <Link
                   to="/dashboard"
                   onClick={() => setMobileOpen(false)}
