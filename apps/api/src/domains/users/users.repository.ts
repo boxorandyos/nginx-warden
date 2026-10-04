@@ -91,6 +91,7 @@ export class UsersRepository {
         username: data.username,
         email: data.email,
         password: data.password,
+        authProvider: 'local',
         fullName: data.fullName,
         role: data.role || 'viewer',
         status: data.status || 'active',

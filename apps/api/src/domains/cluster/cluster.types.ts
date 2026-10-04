@@ -200,7 +200,7 @@ export interface SyncUser {
   email: string;
   username: string;
   fullName: string;
-  password: string; // Already hashed
+  password: string | null; // Already hashed; null for external IdP users
   role: string;
 }
 

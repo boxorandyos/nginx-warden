@@ -31,11 +31,46 @@ enum ActivityType {
   system
 }
 
+enum AuthProviderType {
+  local
+  ldap
+  oidc_entra
+  oidc_generic
+}
+
+enum AuthRequirementTarget {
+  admin_portal
+  access_gateway
+}
+
+enum AuthAuditLevel {
+  debug
+  info
+  warn
+  error
+}
+
+enum AuthAuditOutcome {
+  success
+  failure
+  lockout
+  blocked
+  challenge
+  info
+}
+
+enum AuthAbuseKind {
+  user
+  ip
+  global
+}
+
 model User {
   id           String     @id @default(cuid())
   username     String     @unique
   email        String     @unique
-  password     String
+  /// Null for externally authenticated users (LDAP/OIDC); required for authProvider=local
+  password     String?
   fullName     String
   role         UserRole   @default(viewer)
   status       UserStatus @default(active)
@@ -44,6 +79,12 @@ model User {
   timezone     String     @default("Asia/Ho_Chi_Minh")
   language     String     @default("en")
   isFirstLogin Boolean    @default(true)
+  /// How this user authenticates
+  authProvider AuthProviderType @default(local)
+  /// Stable external subject (LDAP DN, Entra oid, OIDC sub)
+  externalId   String?
+  /// Last known IdP group names/claims (for policy evaluation cache)
+  externalGroups String[] @default([])
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
   lastLogin    DateTime?
@@ -54,7 +95,9 @@ model User {
   activities    ActivityLog[]
   refreshTokens RefreshToken[]
   sessions      UserSession[]
+  authAudits    AuthAuditLog[]
 
+  @@index([authProvider, externalId])
   @@map("users")
 }
 
@@ -934,3 +977,137 @@ model FirewallApplyLog {
   @@index([appliedAt])
   @@map("firewall_apply_logs")
 }
+
+// ─── Identity / multi-IdP authentication ───────────────────────────────────
+
+/// Configured identity providers (local, LDAP, Entra, generic OIDC, …)
+model AuthProviderConfig {
+  id          String           @id @default(cuid())
+  type        AuthProviderType
+  name        String
+  enabled     Boolean          @default(false)
+  /// System providers (e.g. Local) cannot be deleted
+  isSystem    Boolean          @default(false)
+  /// Provider-specific settings (non-secret). Secrets belong in secretRef / env later.
+  config      Json             @default("{}")
+  /// Display / try order when multiple IdPs are allowed by a policy
+  priority    Int              @default(100)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  policies AuthPolicyProvider[]
+  audits   AuthAuditLog[]
+
+  @@unique([type, name])
+  @@index([type, enabled])
+  @@map("auth_provider_configs")
+}
+
+/// Authentication requirements: which IdPs may satisfy which gate
+model AuthPolicy {
+  id          String                 @id @default(cuid())
+  name        String
+  /// Stable key: admin_portal, gateway:<domainId>, etc.
+  slug        String                 @unique
+  target      AuthRequirementTarget
+  /// Set when target = access_gateway
+  domainId    String?
+  enabled     Boolean                @default(true)
+  requireMfa  Boolean                @default(false)
+  /// IdP group / role claim allow-list (empty = no group allow restriction)
+  groupAllow  String[]               @default([])
+  /// Deny wins over allow
+  groupDeny   String[]               @default([])
+  sessionTtlMinutes Int?
+  description String?                @db.Text
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  providers AuthPolicyProvider[]
+  audits    AuthAuditLog[]
+
+  @@index([target, enabled])
+  @@index([domainId])
+  @@map("auth_policies")
+}
+
+model AuthPolicyProvider {
+  id         String @id @default(cuid())
+  policyId   String
+  providerId String
+
+  policy   AuthPolicy         @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  provider AuthProviderConfig @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([policyId, providerId])
+  @@map("auth_policy_providers")
+}
+
+/// Dedicated authentication audit stream (success/fail/lockout/debug)
+model AuthAuditLog {
+  id           String            @id @default(cuid())
+  level        AuthAuditLevel    @default(info)
+  outcome      AuthAuditOutcome
+  providerType AuthProviderType?
+  providerId   String?
+  provider     AuthProviderConfig? @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  policyId     String?
+  policy       AuthPolicy?       @relation(fields: [policyId], references: [id], onDelete: SetNull)
+  userId       String?
+  user         User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  username     String?
+  ip           String
+  userAgent    String            @db.Text
+  message      String
+  details      Json?
+  createdAt    DateTime          @default(now())
+
+  @@index([createdAt])
+  @@index([outcome, createdAt])
+  @@index([level, createdAt])
+  @@index([ip, createdAt])
+  @@index([username, createdAt])
+  @@map("auth_audit_logs")
+}
+
+/// Progressive lockout / IP ban / global circuit state
+model AuthAbuseState {
+  id                 String        @id @default(cuid())
+  /// "user:<id>", "ip:<addr>", or "global"
+  key                String        @unique
+  kind               AuthAbuseKind
+  failureCount       Int           @default(0)
+  windowStartedAt    DateTime      @default(now())
+  lockedUntil        DateTime?
+  permanentlyBlocked Boolean       @default(false)
+  lastFailureAt      DateTime?
+  metadata           Json?
+  updatedAt          DateTime      @updatedAt
+  createdAt          DateTime      @default(now())
+
+  @@index([kind, lockedUntil])
+  @@map("auth_abuse_states")
+}
+
+/// Singleton-ish abuse thresholds (one row expected)
+model AuthAbuseSettings {
+  id String @id @default(cuid())
+
+  maxFailuresPerUser           Int @default(5)
+  userLockMinutes              Int @default(15)
+  maxFailuresPerIp             Int @default(20)
+  ipBanEnabled                 Boolean @default(true)
+  /// After this many IP-window failures, add CIDR to firewall local_deny
+  ipFirewallBanAfter           Int @default(30)
+  maxFailuresBeforeAuthDisable Int @default(200)
+  authCircuitMinutes           Int @default(30)
+  /// When set, all portal/gateway password/IdP login is refused
+  authDisabledUntil            DateTime?
+  windowMinutes                Int @default(15)
+
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@map("auth_abuse_settings")
+}
+

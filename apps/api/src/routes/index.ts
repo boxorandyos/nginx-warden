@@ -18,6 +18,7 @@ import slaveRoutes from '../domains/cluster/cluster.routes';
 import nodeSyncRoutes from '../domains/cluster/node-sync.routes';
 import nlbRoutes from '../domains/nlb/nlb.routes';
 import firewallRoutes from '../domains/firewall/firewall.routes';
+import identityRoutes from '../domains/identity/identity.routes';
 
 const router = Router();
 
@@ -50,5 +51,6 @@ router.use('/system-config', systemConfigRoutes);
 router.use('/node-sync', nodeSyncRoutes);
 router.use('/nlb', nlbRoutes);
 router.use('/firewall', firewallRoutes);
+router.use('/identity', identityRoutes);
 
 export default router;

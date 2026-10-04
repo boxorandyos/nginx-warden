@@ -1,4 +1,4 @@
-import { comparePassword, hashPassword } from '../../utils/password';
+import { hashPassword } from '../../utils/password';
 import {
   generateAccessToken,
   generateRefreshToken,
@@ -32,6 +32,15 @@ import {
   ValidationError,
   NotFoundError,
 } from '../../shared/errors/app-error';
+import { AuthProviderType, AuthRequirementTarget, AuthAuditOutcome } from '@prisma/client';
+import {
+  ensureIdentityDefaults,
+  resolvePolicy,
+  evaluateGroupRestrictions,
+  getIdpForType,
+} from '../identity/services/policy.service';
+import { authAbuseService, authAuditService } from '../identity/services/auth-audit-abuse.service';
+import prisma from '../../config/database';
 
 /**
  * Auth service - Contains all authentication business logic
@@ -43,7 +52,8 @@ export class AuthService {
   constructor(private readonly authRepository: AuthRepository) {}
 
   /**
-   * Login user with username and password
+   * Login user with username and password (Local IdP via Admin portal policy).
+   * LDAP/OIDC will plug into the same policy path in later phases.
    */
   async login(
     dto: LoginDto,
@@ -51,43 +61,140 @@ export class AuthService {
   ): Promise<LoginResponse> {
     const { username, password } = dto;
 
-    // Find user
-    const user = await this.authRepository.findUserByUsername(username);
+    await ensureIdentityDefaults();
 
-    if (!user) {
-      // Log failed attempt without user ID (user doesn't exist)
+    try {
+      await authAbuseService.assertAllowed({ ip: metadata.ip });
+    } catch (e: any) {
+      await authAuditService.write({
+        outcome: AuthAuditOutcome.blocked,
+        message: `Login blocked: ${e.message}`,
+        ip: metadata.ip,
+        userAgent: metadata.userAgent,
+        username,
+      });
+      throw new AuthenticationError(this.mapAbuseMessage(e.message));
+    }
+
+    const policy = await resolvePolicy(AuthRequirementTarget.admin_portal);
+    if (!policy) {
+      throw new AuthenticationError('Authentication is not configured');
+    }
+
+    if (!policy.allowedProviderTypes.includes(AuthProviderType.local)) {
+      await authAuditService.write({
+        outcome: AuthAuditOutcome.blocked,
+        message: 'Local authentication is not allowed by admin portal policy',
+        ip: metadata.ip,
+        userAgent: metadata.userAgent,
+        username,
+        policyId: policy.id,
+        providerType: AuthProviderType.local,
+      });
+      throw new AuthenticationError(
+        'Local authentication is not allowed for the admin portal'
+      );
+    }
+
+    const localProvider = await prisma.authProviderConfig.findFirst({
+      where: { type: AuthProviderType.local, enabled: true },
+    });
+
+    const idp = getIdpForType(AuthProviderType.local);
+    if (!idp) {
+      throw new AuthenticationError('Local identity provider is unavailable');
+    }
+
+    const authResult = await idp.authenticate({ username, password });
+
+    // Pre-lookup for abuse keyed by user id when username exists
+    const existingUser = await this.authRepository.findUserByUsername(username);
+
+    if (!authResult.ok) {
       await this.authRepository.createActivityLog(
-        null,
+        existingUser?.id ?? null,
         `Failed login attempt for username: ${username}`,
         'security',
         metadata,
         false,
-        'Invalid username'
+        authResult.reason
       );
+
+      const abuse = await authAbuseService.recordFailure({
+        userId: existingUser?.id ?? null,
+        ip: metadata.ip,
+        username,
+      });
+
+      await authAuditService.write({
+        outcome: abuse.userLocked || abuse.ipLocked ? AuthAuditOutcome.lockout : AuthAuditOutcome.failure,
+        message: `Failed login: ${authResult.reason}`,
+        ip: metadata.ip,
+        userAgent: metadata.userAgent,
+        username,
+        userId: existingUser?.id ?? null,
+        policyId: policy.id,
+        providerType: AuthProviderType.local,
+        providerId: localProvider?.id ?? null,
+        details: abuse,
+      });
+
+      if (existingUser) {
+        try {
+          await authAbuseService.assertAllowed({
+            userId: existingUser.id,
+            ip: metadata.ip,
+          });
+        } catch (e: any) {
+          throw new AuthenticationError(this.mapAbuseMessage(e.message));
+        }
+      }
 
       throw new AuthenticationError('Invalid credentials');
     }
 
-    // Check if user is active
+    const user = await this.authRepository.findUserByUsername(authResult.identity.username);
+    if (!user) {
+      throw new AuthenticationError('Invalid credentials');
+    }
+
+    try {
+      await authAbuseService.assertAllowed({ userId: user.id, ip: metadata.ip });
+    } catch (e: any) {
+      await authAuditService.write({
+        outcome: AuthAuditOutcome.blocked,
+        message: `Login blocked after credential check: ${e.message}`,
+        ip: metadata.ip,
+        userAgent: metadata.userAgent,
+        username,
+        userId: user.id,
+        policyId: policy.id,
+        providerType: AuthProviderType.local,
+      });
+      throw new AuthenticationError(this.mapAbuseMessage(e.message));
+    }
+
     if (user.status !== 'active') {
       throw new AuthorizationError('Account is inactive or suspended');
     }
 
-    // Verify password
-    const isPasswordValid = await comparePassword(password, user.password);
-    if (!isPasswordValid) {
-      // Log failed attempt
-      await this.authRepository.createActivityLog(
-        user.id,
-        'Failed login attempt',
-        'security',
-        metadata,
-        false,
-        'Invalid password'
-      );
-
-      throw new AuthenticationError('Invalid credentials');
+    const groups = [...(user.externalGroups || []), ...authResult.identity.groups];
+    const groupCheck = evaluateGroupRestrictions(policy, groups);
+    if (!groupCheck.allowed) {
+      await authAuditService.write({
+        outcome: AuthAuditOutcome.blocked,
+        message: groupCheck.reason || 'Group restriction',
+        ip: metadata.ip,
+        userAgent: metadata.userAgent,
+        username,
+        userId: user.id,
+        policyId: policy.id,
+        providerType: AuthProviderType.local,
+      });
+      throw new AuthorizationError(groupCheck.reason || 'Access denied by group policy');
     }
+
+    await authAbuseService.recordSuccess({ userId: user.id, ip: metadata.ip });
 
     // Check if this is first login
     if (user.isFirstLogin) {
@@ -95,7 +202,7 @@ export class AuthService {
 
       const userData = this.mapUserData(user);
       const tempToken = generateTempToken(user.id);
-      
+
       const result: LoginFirstTimeResult = {
         requirePasswordChange: true,
         userId: user.id,
@@ -106,22 +213,68 @@ export class AuthService {
       return result;
     }
 
-    // Check if 2FA is enabled
-    if (user.twoFactor?.enabled) {
-      logger.info(`User ${username} requires 2FA verification`);
-
-      const userData = this.mapUserData(user);
-      const result: Login2FARequiredResult = {
-        requires2FA: true,
-        userId: user.id,
-        user: userData,
-      };
-
-      return result;
+    // Policy or user 2FA
+    const requireMfa = policy.requireMfa || Boolean(user.twoFactor?.enabled);
+    if (requireMfa) {
+      if (!user.twoFactor?.enabled) {
+        // Policy requires MFA but user has not enrolled — still challenge path via existing setup
+        logger.info(`User ${username} requires 2FA (policy or user setting)`);
+      }
+      if (user.twoFactor?.enabled) {
+        logger.info(`User ${username} requires 2FA verification`);
+        const userData = this.mapUserData(user);
+        const result: Login2FARequiredResult = {
+          requires2FA: true,
+          userId: user.id,
+          user: userData,
+        };
+        return result;
+      }
+      if (policy.requireMfa && !user.twoFactor?.enabled) {
+        await authAuditService.write({
+          outcome: AuthAuditOutcome.challenge,
+          message: 'MFA required by policy but user has not enrolled',
+          ip: metadata.ip,
+          userAgent: metadata.userAgent,
+          username,
+          userId: user.id,
+          policyId: policy.id,
+          providerType: AuthProviderType.local,
+        });
+        throw new AuthorizationError(
+          'Multi-factor authentication is required. Enroll 2FA from a prior Local session or contact an administrator.'
+        );
+      }
     }
 
-    // Generate tokens and complete login
+    await authAuditService.write({
+      outcome: AuthAuditOutcome.success,
+      message: 'Login succeeded',
+      ip: metadata.ip,
+      userAgent: metadata.userAgent,
+      username,
+      userId: user.id,
+      policyId: policy.id,
+      providerType: AuthProviderType.local,
+      providerId: localProvider?.id ?? null,
+    });
+
     return this.completeLogin(user, metadata);
+  }
+
+  private mapAbuseMessage(code: string): string {
+    switch (code) {
+      case 'AUTH_CIRCUIT_OPEN':
+        return 'Authentication temporarily disabled due to too many failed attempts. Try again later or contact an administrator.';
+      case 'AUTH_IP_BLOCKED':
+      case 'AUTH_IP_LOCKED':
+        return 'Too many failed attempts from this network address. Try again later.';
+      case 'AUTH_USER_BLOCKED':
+      case 'AUTH_USER_LOCKED':
+        return 'This account is temporarily locked due to failed login attempts.';
+      default:
+        return 'Authentication denied';
+    }
   }
 
   /**

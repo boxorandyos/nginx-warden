@@ -16,6 +16,7 @@ import { backupSchedulerService } from './domains/backup/services/backup-schedul
 import { sslSchedulerService } from './domains/ssl/services/ssl-scheduler.service';
 import { slaveSyncSchedulerService } from './domains/cluster/services/slave-sync-scheduler.service';
 import { nginxSslHealService } from './domains/ssl/services/nginx-ssl-heal.service';
+import { ensureIdentityDefaults } from './domains/identity/services/policy.service';
 
 const app: Application = express();
 let server: ReturnType<Application['listen']> | null = null;
@@ -87,6 +88,13 @@ modSecSetupService.initializeModSecurityConfig().catch((error) => {
 
 async function startServer(): Promise<void> {
   await loadPortalCorsFromDatabase();
+
+  try {
+    await ensureIdentityDefaults();
+    logger.info('🔐 Identity defaults ensured (Local IdP + admin portal policy)');
+  } catch (error) {
+    logger.error('Identity bootstrap failed (continuing startup):', error);
+  }
 
   // Repair site configs that still reference deleted SSL files before accepting traffic /
   // before update.sh runs nginx -t against sites-enabled. Cap wait so a hung nginx
