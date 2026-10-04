@@ -287,7 +287,7 @@ export default function Authentication() {
         <TabsContent value="policies" className="space-y-4 mt-4">
           {(policiesQuery.data || []).map((policy: AuthPolicy) => (
             <PolicyCard
-              key={policy.id}
+              key={`${policy.id}-${policy.providers.map((x) => x.providerId).join(',')}-${policy.requireMfa}-${policy.groupAllow.join(',')}-${policy.groupDeny.join(',')}`}
               policy={policy}
               providers={providersQuery.data || []}
               domains={domainsQuery.data || []}
