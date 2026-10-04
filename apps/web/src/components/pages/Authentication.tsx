@@ -271,7 +271,7 @@ export default function Authentication() {
           <div className="grid gap-4 lg:grid-cols-2">
             {(providersQuery.data || []).map((p: AuthProviderConfig) => (
               <ProviderCard
-                key={p.id}
+                key={`${p.id}-${p.updatedAt}`}
                 provider={p}
                 toggling={toggleProvider.isPending}
                 saving={saveProviderConfig.isPending}
