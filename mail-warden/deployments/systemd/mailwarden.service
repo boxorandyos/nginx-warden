@@ -1,0 +1,21 @@
+[Unit]
+Description=Mail Warden API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mailwarden
+Group=mailwarden
+WorkingDirectory=/opt/mail-warden
+ExecStart=/opt/mail-warden/bin/mailwarden -config /opt/mail-warden/configs/mailwarden.yaml -listen :8080
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/mail-warden
+
+[Install]
+WantedBy=multi-user.target
