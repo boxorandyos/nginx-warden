@@ -46,6 +46,14 @@ export const config = {
     bcryptRounds: parseInt(process.env.BCRYPT_ROUNDS || '10', 10),
     sessionSecret: process.env.SESSION_SECRET!,
   },
+  server: {
+    trustProxy: process.env.TRUST_PROXY === 'true',
+    jsonLimit: process.env.JSON_BODY_LIMIT || '1mb',
+    urlEncodedLimit: process.env.URLENCODED_BODY_LIMIT || '1mb',
+    requestTimeoutMs: parseInt(process.env.REQUEST_TIMEOUT_MS || '20000', 10),
+    headersTimeoutMs: parseInt(process.env.HEADERS_TIMEOUT_MS || '15000', 10),
+    keepAliveTimeoutMs: parseInt(process.env.KEEPALIVE_TIMEOUT_MS || '60000', 10),
+  },
   
   twoFactor: {
     appName: process.env.TWO_FACTOR_APP_NAME || 'Nginx Warden',
@@ -63,5 +71,30 @@ const requiredEnvVars = [
 for (const envVar of requiredEnvVars) {
   if (!process.env[envVar]) {
     throw new Error(`Missing required environment variable: ${envVar}`);
+  }
+}
+
+const isProductionLike = (process.env.NODE_ENV || '').toLowerCase() === 'production';
+if (isProductionLike) {
+  const secretChecks = [
+    ['JWT_ACCESS_SECRET', process.env.JWT_ACCESS_SECRET || ''],
+    ['JWT_REFRESH_SECRET', process.env.JWT_REFRESH_SECRET || ''],
+    ['SESSION_SECRET', process.env.SESSION_SECRET || ''],
+  ] as const;
+  const disallowed = new Set([
+    'changeme',
+    'change-me',
+    'change-me-access-secret',
+    'change-me-refresh-secret',
+    'change-this-password',
+    'password',
+    'admin',
+    'secret',
+  ]);
+  for (const [key, value] of secretChecks) {
+    const normalized = value.trim().toLowerCase();
+    if (normalized.length < 24 || disallowed.has(normalized)) {
+      throw new Error(`${key} is unsafe for production; use a strong unique secret`);
+    }
   }
 }

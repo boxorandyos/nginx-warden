@@ -1,0 +1,41 @@
+{
+  "id": null,
+  "uid": "nginx-warden-overview",
+  "title": "Nginx Warden Overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "tags": ["nginx-warden", "security"],
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Auth Failures (rate)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "rate(nginx_warden_auth_failures_total[5m])",
+          "legendFormat": "failures/sec"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Auth Lockouts (increase)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "increase(nginx_warden_auth_lockouts_total[15m])",
+          "legendFormat": "lockouts/15m"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "API Up",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "targets": [{ "expr": "up{job=\"nginx-warden-api\"}" }]
+    }
+  ],
+  "templating": { "list": [] }
+}

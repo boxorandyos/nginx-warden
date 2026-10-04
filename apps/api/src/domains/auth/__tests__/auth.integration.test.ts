@@ -141,6 +141,20 @@ describe('Auth Integration Tests', () => {
       expect(response.body.errors).toBeDefined();
     });
 
+    it('should return 400 for unknown request fields', async () => {
+      const response = await request(app)
+        .post('/api/auth/login')
+        .send({
+          username: 'testuser',
+          password: 'password123',
+          unknownField: true,
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+      expect(String(response.body.message || '')).toContain('Unknown fields');
+    });
+
     it('should return 401 for short username that fails authentication', async () => {
       // Username min length is not enforced — LDAP/OIDC usernames may be short
       const response = await request(app)
@@ -214,6 +228,19 @@ describe('Auth Integration Tests', () => {
       expect(response.status).toBe(400);
       expect(response.body.success).toBe(false);
       expect(response.body.errors).toBeDefined();
+    });
+
+    it('should return 429 when refresh endpoint rate limit is exceeded', async () => {
+      let lastStatus = 0;
+      for (let i = 0; i < 45; i += 1) {
+        const response = await request(app).post('/api/auth/refresh').send({});
+        lastStatus = response.status;
+        if (response.status === 429) {
+          expect(response.header['retry-after']).toBeDefined();
+          return;
+        }
+      }
+      expect(lastStatus).toBe(429);
     });
 
     it('should return 401 for revoked refresh token', async () => {

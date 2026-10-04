@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { body } from 'express-validator';
 import { authenticate, authorize } from '../../middleware/auth';
 import { validateSlaveApiKey } from './middleware/slave-auth.middleware';
+import { rejectUnknownBodyKeys } from '../../middleware/request-shape';
 import {
   registerSlaveNode,
   getSlaveNodes,
@@ -21,9 +22,17 @@ router.post(
   '/nodes',
   authenticate,
   authorize('admin'),
+  rejectUnknownBodyKeys(['name', 'host', 'port', 'syncInterval']),
   [
-    body('name').notEmpty().withMessage('Name is required'),
-    body('host').notEmpty().withMessage('Host is required'),
+    body('name').trim().notEmpty().withMessage('Name is required'),
+    body('host')
+      .trim()
+      .notEmpty()
+      .withMessage('Host is required')
+      .isLength({ max: 255 })
+      .withMessage('Host is too long')
+      .custom((value) => !String(value).includes('://'))
+      .withMessage('Host must not include protocol'),
     body('port').optional().isInt({ min: 1, max: 65535 }),
     body('syncInterval').optional().isInt({ min: 10 })
   ],

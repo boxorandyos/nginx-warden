@@ -62,6 +62,8 @@ export default defineConfig({
         text: 'Resources',
         items: [
           { text: 'Configuration', link: '/reference/configuration' },
+          { text: 'Production Readiness', link: '/guide/production-readiness' },
+          { text: 'Release Go/No-Go', link: '/reference/release-go-no-go' },
           { text: 'Troubleshooting', link: '/reference/troubleshooting' },
           { text: 'FAQ', link: '/reference/faq' }
         ]
@@ -89,7 +91,8 @@ export default defineConfig({
             { text: 'ModSecurity', link: '/guide/modsecurity' },
             { text: 'Performance Monitoring', link: '/guide/performance' },
             { text: 'Log Analysis', link: '/guide/logs' },
-            { text: 'Firewall & CrowdSec (spec)', link: '/guide/firewall-crowdsec-nftables' }
+            { text: 'Firewall & CrowdSec (spec)', link: '/guide/firewall-crowdsec-nftables' },
+            { text: 'Production Readiness', link: '/guide/production-readiness' }
           ]
         }
       ],
@@ -144,6 +147,7 @@ export default defineConfig({
           collapsed: false,
           items: [
             { text: 'Configuration', link: '/reference/configuration' },
+            { text: 'Release Go/No-Go', link: '/reference/release-go-no-go' },
             { text: 'Troubleshooting', link: '/reference/troubleshooting' },
             { text: 'FAQ', link: '/reference/faq' }
           ]
