@@ -9,43 +9,52 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as CatchallRouteImport } from './routes/$catchall'
-import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as AuthRouteImport } from './routes/_auth'
+import { Route as CatchallRouteImport } from './routes/$catchall'
 import { Route as AuthIndexRouteImport } from './routes/_auth/index'
-import { Route as AuthAccessListsRouteImport } from './routes/_auth/access-lists'
-import { Route as AuthAccountRouteImport } from './routes/_auth/account'
-import { Route as AuthAclRouteImport } from './routes/_auth/acl'
-import { Route as AuthAlertsRouteImport } from './routes/_auth/alerts'
-import { Route as AuthAuthenticationRouteImport } from './routes/_auth/authentication'
-import { Route as AuthBackupRouteImport } from './routes/_auth/backup'
-import { Route as AuthConfigurationRouteImport } from './routes/_auth/configuration'
-import { Route as AuthDashboardRouteImport } from './routes/_auth/dashboard'
-import { Route as AuthDefaultServerRouteImport } from './routes/_auth/default-server'
-import { Route as AuthDomainsRouteImport } from './routes/_auth/domains'
-import { Route as AuthFirewallRouteImport } from './routes/_auth/firewall'
-import { Route as AuthLogsRouteImport } from './routes/_auth/logs'
-import { Route as AuthMaintenanceRouteImport } from './routes/_auth/maintenance'
-import { Route as AuthModsecurityRouteImport } from './routes/_auth/modsecurity'
-import { Route as AuthNetworkRouteImport } from './routes/_auth/network'
-import { Route as AuthNodesRouteImport } from './routes/_auth/nodes'
-import { Route as AuthPerformanceRouteImport } from './routes/_auth/performance'
-import { Route as AuthPlatformRouteImport } from './routes/_auth/platform'
-import { Route as AuthSslRouteImport } from './routes/_auth/ssl'
 import { Route as AuthUsersRouteImport } from './routes/_auth/users'
+import { Route as AuthSslRouteImport } from './routes/_auth/ssl'
+import { Route as AuthSnapshotsRouteImport } from './routes/_auth/snapshots'
+import { Route as AuthServiceAccountsRouteImport } from './routes/_auth/service-accounts'
+import { Route as AuthRunbooksRouteImport } from './routes/_auth/runbooks'
+import { Route as AuthPlatformRouteImport } from './routes/_auth/platform'
+import { Route as AuthPerformanceRouteImport } from './routes/_auth/performance'
+import { Route as AuthNodesRouteImport } from './routes/_auth/nodes'
+import { Route as AuthNetworkRouteImport } from './routes/_auth/network'
+import { Route as AuthModsecurityRouteImport } from './routes/_auth/modsecurity'
+import { Route as AuthMetricsRouteImport } from './routes/_auth/metrics'
+import { Route as AuthMaintenanceRouteImport } from './routes/_auth/maintenance'
+import { Route as AuthLogsRouteImport } from './routes/_auth/logs'
+import { Route as AuthJobsRouteImport } from './routes/_auth/jobs'
+import { Route as AuthIdentityRouteImport } from './routes/_auth/identity'
+import { Route as AuthHardeningRouteImport } from './routes/_auth/hardening'
+import { Route as AuthFleetAlertsRouteImport } from './routes/_auth/fleet-alerts'
+import { Route as AuthFirewallRouteImport } from './routes/_auth/firewall'
+import { Route as AuthDomainsRouteImport } from './routes/_auth/domains'
+import { Route as AuthDefaultServerRouteImport } from './routes/_auth/default-server'
+import { Route as AuthDashboardRouteImport } from './routes/_auth/dashboard'
+import { Route as AuthConfigurationRouteImport } from './routes/_auth/configuration'
+import { Route as AuthBackupRouteImport } from './routes/_auth/backup'
+import { Route as AuthAuthenticationRouteImport } from './routes/_auth/authentication'
+import { Route as AuthAuditRouteImport } from './routes/_auth/audit'
+import { Route as AuthAlertsRouteImport } from './routes/_auth/alerts'
+import { Route as AuthAclRouteImport } from './routes/_auth/acl'
+import { Route as AuthAccountRouteImport } from './routes/_auth/account'
+import { Route as AuthAccessListsRouteImport } from './routes/_auth/access-lists'
 
-const CatchallRoute = CatchallRouteImport.update({
-  id: '/$catchall',
-  path: '/$catchall',
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthRoute = AuthRouteImport.update({
   id: '/_auth',
   getParentRoute: () => rootRouteImport,
 } as any)
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
+const CatchallRoute = CatchallRouteImport.update({
+  id: '/$catchall',
+  path: '/$catchall',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthIndexRoute = AuthIndexRouteImport.update({
@@ -53,94 +62,9 @@ const AuthIndexRoute = AuthIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthRoute,
 } as any)
-const AuthAccessListsRoute = AuthAccessListsRouteImport.update({
-  id: '/access-lists',
-  path: '/access-lists',
-  getParentRoute: () => AuthRoute,
-} as any)
-const AuthAccountRoute = AuthAccountRouteImport.update({
-  id: '/account',
-  path: '/account',
-  getParentRoute: () => AuthRoute,
-} as any)
-const AuthAclRoute = AuthAclRouteImport.update({
-  id: '/acl',
-  path: '/acl',
-  getParentRoute: () => AuthRoute,
-} as any)
-const AuthAlertsRoute = AuthAlertsRouteImport.update({
-  id: '/alerts',
-  path: '/alerts',
-  getParentRoute: () => AuthRoute,
-} as any)
-const AuthAuthenticationRoute = AuthAuthenticationRouteImport.update({
-  id: '/authentication',
-  path: '/authentication',
-  getParentRoute: () => AuthRoute,
-} as any)
-const AuthBackupRoute = AuthBackupRouteImport.update({
-  id: '/backup',
-  path: '/backup',
-  getParentRoute: () => AuthRoute,
-} as any)
-const AuthConfigurationRoute = AuthConfigurationRouteImport.update({
-  id: '/configuration',
-  path: '/configuration',
-  getParentRoute: () => AuthRoute,
-} as any)
-const AuthDashboardRoute = AuthDashboardRouteImport.update({
-  id: '/dashboard',
-  path: '/dashboard',
-  getParentRoute: () => AuthRoute,
-} as any)
-const AuthDefaultServerRoute = AuthDefaultServerRouteImport.update({
-  id: '/default-server',
-  path: '/default-server',
-  getParentRoute: () => AuthRoute,
-} as any)
-const AuthDomainsRoute = AuthDomainsRouteImport.update({
-  id: '/domains',
-  path: '/domains',
-  getParentRoute: () => AuthRoute,
-} as any)
-const AuthFirewallRoute = AuthFirewallRouteImport.update({
-  id: '/firewall',
-  path: '/firewall',
-  getParentRoute: () => AuthRoute,
-} as any)
-const AuthLogsRoute = AuthLogsRouteImport.update({
-  id: '/logs',
-  path: '/logs',
-  getParentRoute: () => AuthRoute,
-} as any)
-const AuthMaintenanceRoute = AuthMaintenanceRouteImport.update({
-  id: '/maintenance',
-  path: '/maintenance',
-  getParentRoute: () => AuthRoute,
-} as any)
-const AuthModsecurityRoute = AuthModsecurityRouteImport.update({
-  id: '/modsecurity',
-  path: '/modsecurity',
-  getParentRoute: () => AuthRoute,
-} as any)
-const AuthNetworkRoute = AuthNetworkRouteImport.update({
-  id: '/network',
-  path: '/network',
-  getParentRoute: () => AuthRoute,
-} as any)
-const AuthNodesRoute = AuthNodesRouteImport.update({
-  id: '/nodes',
-  path: '/nodes',
-  getParentRoute: () => AuthRoute,
-} as any)
-const AuthPerformanceRoute = AuthPerformanceRouteImport.update({
-  id: '/performance',
-  path: '/performance',
-  getParentRoute: () => AuthRoute,
-} as any)
-const AuthPlatformRoute = AuthPlatformRouteImport.update({
-  id: '/platform',
-  path: '/platform',
+const AuthUsersRoute = AuthUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
   getParentRoute: () => AuthRoute,
 } as any)
 const AuthSslRoute = AuthSslRouteImport.update({
@@ -148,20 +72,150 @@ const AuthSslRoute = AuthSslRouteImport.update({
   path: '/ssl',
   getParentRoute: () => AuthRoute,
 } as any)
-const AuthUsersRoute = AuthUsersRouteImport.update({
-  id: '/users',
-  path: '/users',
+const AuthSnapshotsRoute = AuthSnapshotsRouteImport.update({
+  id: '/snapshots',
+  path: '/snapshots',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthServiceAccountsRoute = AuthServiceAccountsRouteImport.update({
+  id: '/service-accounts',
+  path: '/service-accounts',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthRunbooksRoute = AuthRunbooksRouteImport.update({
+  id: '/runbooks',
+  path: '/runbooks',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthPlatformRoute = AuthPlatformRouteImport.update({
+  id: '/platform',
+  path: '/platform',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthPerformanceRoute = AuthPerformanceRouteImport.update({
+  id: '/performance',
+  path: '/performance',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthNodesRoute = AuthNodesRouteImport.update({
+  id: '/nodes',
+  path: '/nodes',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthNetworkRoute = AuthNetworkRouteImport.update({
+  id: '/network',
+  path: '/network',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthModsecurityRoute = AuthModsecurityRouteImport.update({
+  id: '/modsecurity',
+  path: '/modsecurity',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthMetricsRoute = AuthMetricsRouteImport.update({
+  id: '/metrics',
+  path: '/metrics',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthMaintenanceRoute = AuthMaintenanceRouteImport.update({
+  id: '/maintenance',
+  path: '/maintenance',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthLogsRoute = AuthLogsRouteImport.update({
+  id: '/logs',
+  path: '/logs',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthJobsRoute = AuthJobsRouteImport.update({
+  id: '/jobs',
+  path: '/jobs',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthIdentityRoute = AuthIdentityRouteImport.update({
+  id: '/identity',
+  path: '/identity',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthHardeningRoute = AuthHardeningRouteImport.update({
+  id: '/hardening',
+  path: '/hardening',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthFleetAlertsRoute = AuthFleetAlertsRouteImport.update({
+  id: '/fleet-alerts',
+  path: '/fleet-alerts',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthFirewallRoute = AuthFirewallRouteImport.update({
+  id: '/firewall',
+  path: '/firewall',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthDomainsRoute = AuthDomainsRouteImport.update({
+  id: '/domains',
+  path: '/domains',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthDefaultServerRoute = AuthDefaultServerRouteImport.update({
+  id: '/default-server',
+  path: '/default-server',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthDashboardRoute = AuthDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthConfigurationRoute = AuthConfigurationRouteImport.update({
+  id: '/configuration',
+  path: '/configuration',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthBackupRoute = AuthBackupRouteImport.update({
+  id: '/backup',
+  path: '/backup',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthAuthenticationRoute = AuthAuthenticationRouteImport.update({
+  id: '/authentication',
+  path: '/authentication',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthAuditRoute = AuthAuditRouteImport.update({
+  id: '/audit',
+  path: '/audit',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthAlertsRoute = AuthAlertsRouteImport.update({
+  id: '/alerts',
+  path: '/alerts',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthAclRoute = AuthAclRouteImport.update({
+  id: '/acl',
+  path: '/acl',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthAccountRoute = AuthAccountRouteImport.update({
+  id: '/account',
+  path: '/account',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthAccessListsRoute = AuthAccessListsRouteImport.update({
+  id: '/access-lists',
+  path: '/access-lists',
   getParentRoute: () => AuthRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/$catchall': typeof CatchallRoute
-  '/': typeof AuthIndexRoute
   '/login': typeof LoginRoute
   '/access-lists': typeof AuthAccessListsRoute
   '/account': typeof AuthAccountRoute
   '/acl': typeof AuthAclRoute
   '/alerts': typeof AuthAlertsRoute
+  '/audit': typeof AuthAuditRoute
   '/authentication': typeof AuthAuthenticationRoute
   '/backup': typeof AuthBackupRoute
   '/configuration': typeof AuthConfigurationRoute
@@ -169,15 +223,24 @@ export interface FileRoutesByFullPath {
   '/default-server': typeof AuthDefaultServerRoute
   '/domains': typeof AuthDomainsRoute
   '/firewall': typeof AuthFirewallRoute
+  '/fleet-alerts': typeof AuthFleetAlertsRoute
+  '/hardening': typeof AuthHardeningRoute
+  '/identity': typeof AuthIdentityRoute
+  '/jobs': typeof AuthJobsRoute
   '/logs': typeof AuthLogsRoute
   '/maintenance': typeof AuthMaintenanceRoute
+  '/metrics': typeof AuthMetricsRoute
   '/modsecurity': typeof AuthModsecurityRoute
   '/network': typeof AuthNetworkRoute
   '/nodes': typeof AuthNodesRoute
   '/performance': typeof AuthPerformanceRoute
   '/platform': typeof AuthPlatformRoute
+  '/runbooks': typeof AuthRunbooksRoute
+  '/service-accounts': typeof AuthServiceAccountsRoute
+  '/snapshots': typeof AuthSnapshotsRoute
   '/ssl': typeof AuthSslRoute
   '/users': typeof AuthUsersRoute
+  '/': typeof AuthIndexRoute
 }
 export interface FileRoutesByTo {
   '/$catchall': typeof CatchallRoute
@@ -186,6 +249,7 @@ export interface FileRoutesByTo {
   '/account': typeof AuthAccountRoute
   '/acl': typeof AuthAclRoute
   '/alerts': typeof AuthAlertsRoute
+  '/audit': typeof AuthAuditRoute
   '/authentication': typeof AuthAuthenticationRoute
   '/backup': typeof AuthBackupRoute
   '/configuration': typeof AuthConfigurationRoute
@@ -193,13 +257,21 @@ export interface FileRoutesByTo {
   '/default-server': typeof AuthDefaultServerRoute
   '/domains': typeof AuthDomainsRoute
   '/firewall': typeof AuthFirewallRoute
+  '/fleet-alerts': typeof AuthFleetAlertsRoute
+  '/hardening': typeof AuthHardeningRoute
+  '/identity': typeof AuthIdentityRoute
+  '/jobs': typeof AuthJobsRoute
   '/logs': typeof AuthLogsRoute
   '/maintenance': typeof AuthMaintenanceRoute
+  '/metrics': typeof AuthMetricsRoute
   '/modsecurity': typeof AuthModsecurityRoute
   '/network': typeof AuthNetworkRoute
   '/nodes': typeof AuthNodesRoute
   '/performance': typeof AuthPerformanceRoute
   '/platform': typeof AuthPlatformRoute
+  '/runbooks': typeof AuthRunbooksRoute
+  '/service-accounts': typeof AuthServiceAccountsRoute
+  '/snapshots': typeof AuthSnapshotsRoute
   '/ssl': typeof AuthSslRoute
   '/users': typeof AuthUsersRoute
   '/': typeof AuthIndexRoute
@@ -213,6 +285,7 @@ export interface FileRoutesById {
   '/_auth/account': typeof AuthAccountRoute
   '/_auth/acl': typeof AuthAclRoute
   '/_auth/alerts': typeof AuthAlertsRoute
+  '/_auth/audit': typeof AuthAuditRoute
   '/_auth/authentication': typeof AuthAuthenticationRoute
   '/_auth/backup': typeof AuthBackupRoute
   '/_auth/configuration': typeof AuthConfigurationRoute
@@ -220,13 +293,21 @@ export interface FileRoutesById {
   '/_auth/default-server': typeof AuthDefaultServerRoute
   '/_auth/domains': typeof AuthDomainsRoute
   '/_auth/firewall': typeof AuthFirewallRoute
+  '/_auth/fleet-alerts': typeof AuthFleetAlertsRoute
+  '/_auth/hardening': typeof AuthHardeningRoute
+  '/_auth/identity': typeof AuthIdentityRoute
+  '/_auth/jobs': typeof AuthJobsRoute
   '/_auth/logs': typeof AuthLogsRoute
   '/_auth/maintenance': typeof AuthMaintenanceRoute
+  '/_auth/metrics': typeof AuthMetricsRoute
   '/_auth/modsecurity': typeof AuthModsecurityRoute
   '/_auth/network': typeof AuthNetworkRoute
   '/_auth/nodes': typeof AuthNodesRoute
   '/_auth/performance': typeof AuthPerformanceRoute
   '/_auth/platform': typeof AuthPlatformRoute
+  '/_auth/runbooks': typeof AuthRunbooksRoute
+  '/_auth/service-accounts': typeof AuthServiceAccountsRoute
+  '/_auth/snapshots': typeof AuthSnapshotsRoute
   '/_auth/ssl': typeof AuthSslRoute
   '/_auth/users': typeof AuthUsersRoute
   '/_auth/': typeof AuthIndexRoute
@@ -235,12 +316,12 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/$catchall'
-    | '/'
     | '/login'
     | '/access-lists'
     | '/account'
     | '/acl'
     | '/alerts'
+    | '/audit'
     | '/authentication'
     | '/backup'
     | '/configuration'
@@ -248,15 +329,24 @@ export interface FileRouteTypes {
     | '/default-server'
     | '/domains'
     | '/firewall'
+    | '/fleet-alerts'
+    | '/hardening'
+    | '/identity'
+    | '/jobs'
     | '/logs'
     | '/maintenance'
+    | '/metrics'
     | '/modsecurity'
     | '/network'
     | '/nodes'
     | '/performance'
     | '/platform'
+    | '/runbooks'
+    | '/service-accounts'
+    | '/snapshots'
     | '/ssl'
     | '/users'
+    | '/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/$catchall'
@@ -265,6 +355,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/acl'
     | '/alerts'
+    | '/audit'
     | '/authentication'
     | '/backup'
     | '/configuration'
@@ -272,13 +363,21 @@ export interface FileRouteTypes {
     | '/default-server'
     | '/domains'
     | '/firewall'
+    | '/fleet-alerts'
+    | '/hardening'
+    | '/identity'
+    | '/jobs'
     | '/logs'
     | '/maintenance'
+    | '/metrics'
     | '/modsecurity'
     | '/network'
     | '/nodes'
     | '/performance'
     | '/platform'
+    | '/runbooks'
+    | '/service-accounts'
+    | '/snapshots'
     | '/ssl'
     | '/users'
     | '/'
@@ -291,6 +390,7 @@ export interface FileRouteTypes {
     | '/_auth/account'
     | '/_auth/acl'
     | '/_auth/alerts'
+    | '/_auth/audit'
     | '/_auth/authentication'
     | '/_auth/backup'
     | '/_auth/configuration'
@@ -298,13 +398,21 @@ export interface FileRouteTypes {
     | '/_auth/default-server'
     | '/_auth/domains'
     | '/_auth/firewall'
+    | '/_auth/fleet-alerts'
+    | '/_auth/hardening'
+    | '/_auth/identity'
+    | '/_auth/jobs'
     | '/_auth/logs'
     | '/_auth/maintenance'
+    | '/_auth/metrics'
     | '/_auth/modsecurity'
     | '/_auth/network'
     | '/_auth/nodes'
     | '/_auth/performance'
     | '/_auth/platform'
+    | '/_auth/runbooks'
+    | '/_auth/service-accounts'
+    | '/_auth/snapshots'
     | '/_auth/ssl'
     | '/_auth/users'
     | '/_auth/'
@@ -318,25 +426,25 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/$catchall': {
-      id: '/$catchall'
-      path: '/$catchall'
-      fullPath: '/$catchall'
-      preLoaderRoute: typeof CatchallRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/_auth': {
-      id: '/_auth'
-      path: ''
-      fullPath: '/'
-      preLoaderRoute: typeof AuthRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/login': {
       id: '/login'
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_auth': {
+      id: '/_auth'
+      path: ''
+      fullPath: ''
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/$catchall': {
+      id: '/$catchall'
+      path: '/$catchall'
+      fullPath: '/$catchall'
+      preLoaderRoute: typeof CatchallRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_auth/': {
@@ -346,130 +454,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthIndexRouteImport
       parentRoute: typeof AuthRoute
     }
-    '/_auth/access-lists': {
-      id: '/_auth/access-lists'
-      path: '/access-lists'
-      fullPath: '/access-lists'
-      preLoaderRoute: typeof AuthAccessListsRouteImport
-      parentRoute: typeof AuthRoute
-    }
-    '/_auth/account': {
-      id: '/_auth/account'
-      path: '/account'
-      fullPath: '/account'
-      preLoaderRoute: typeof AuthAccountRouteImport
-      parentRoute: typeof AuthRoute
-    }
-    '/_auth/acl': {
-      id: '/_auth/acl'
-      path: '/acl'
-      fullPath: '/acl'
-      preLoaderRoute: typeof AuthAclRouteImport
-      parentRoute: typeof AuthRoute
-    }
-    '/_auth/alerts': {
-      id: '/_auth/alerts'
-      path: '/alerts'
-      fullPath: '/alerts'
-      preLoaderRoute: typeof AuthAlertsRouteImport
-      parentRoute: typeof AuthRoute
-    }
-    '/_auth/authentication': {
-      id: '/_auth/authentication'
-      path: '/authentication'
-      fullPath: '/authentication'
-      preLoaderRoute: typeof AuthAuthenticationRouteImport
-      parentRoute: typeof AuthRoute
-    }
-    '/_auth/backup': {
-      id: '/_auth/backup'
-      path: '/backup'
-      fullPath: '/backup'
-      preLoaderRoute: typeof AuthBackupRouteImport
-      parentRoute: typeof AuthRoute
-    }
-    '/_auth/configuration': {
-      id: '/_auth/configuration'
-      path: '/configuration'
-      fullPath: '/configuration'
-      preLoaderRoute: typeof AuthConfigurationRouteImport
-      parentRoute: typeof AuthRoute
-    }
-    '/_auth/dashboard': {
-      id: '/_auth/dashboard'
-      path: '/dashboard'
-      fullPath: '/dashboard'
-      preLoaderRoute: typeof AuthDashboardRouteImport
-      parentRoute: typeof AuthRoute
-    }
-    '/_auth/default-server': {
-      id: '/_auth/default-server'
-      path: '/default-server'
-      fullPath: '/default-server'
-      preLoaderRoute: typeof AuthDefaultServerRouteImport
-      parentRoute: typeof AuthRoute
-    }
-    '/_auth/domains': {
-      id: '/_auth/domains'
-      path: '/domains'
-      fullPath: '/domains'
-      preLoaderRoute: typeof AuthDomainsRouteImport
-      parentRoute: typeof AuthRoute
-    }
-    '/_auth/firewall': {
-      id: '/_auth/firewall'
-      path: '/firewall'
-      fullPath: '/firewall'
-      preLoaderRoute: typeof AuthFirewallRouteImport
-      parentRoute: typeof AuthRoute
-    }
-    '/_auth/logs': {
-      id: '/_auth/logs'
-      path: '/logs'
-      fullPath: '/logs'
-      preLoaderRoute: typeof AuthLogsRouteImport
-      parentRoute: typeof AuthRoute
-    }
-    '/_auth/maintenance': {
-      id: '/_auth/maintenance'
-      path: '/maintenance'
-      fullPath: '/maintenance'
-      preLoaderRoute: typeof AuthMaintenanceRouteImport
-      parentRoute: typeof AuthRoute
-    }
-    '/_auth/modsecurity': {
-      id: '/_auth/modsecurity'
-      path: '/modsecurity'
-      fullPath: '/modsecurity'
-      preLoaderRoute: typeof AuthModsecurityRouteImport
-      parentRoute: typeof AuthRoute
-    }
-    '/_auth/network': {
-      id: '/_auth/network'
-      path: '/network'
-      fullPath: '/network'
-      preLoaderRoute: typeof AuthNetworkRouteImport
-      parentRoute: typeof AuthRoute
-    }
-    '/_auth/nodes': {
-      id: '/_auth/nodes'
-      path: '/nodes'
-      fullPath: '/nodes'
-      preLoaderRoute: typeof AuthNodesRouteImport
-      parentRoute: typeof AuthRoute
-    }
-    '/_auth/performance': {
-      id: '/_auth/performance'
-      path: '/performance'
-      fullPath: '/performance'
-      preLoaderRoute: typeof AuthPerformanceRouteImport
-      parentRoute: typeof AuthRoute
-    }
-    '/_auth/platform': {
-      id: '/_auth/platform'
-      path: '/platform'
-      fullPath: '/platform'
-      preLoaderRoute: typeof AuthPlatformRouteImport
+    '/_auth/users': {
+      id: '/_auth/users'
+      path: '/users'
+      fullPath: '/users'
+      preLoaderRoute: typeof AuthUsersRouteImport
       parentRoute: typeof AuthRoute
     }
     '/_auth/ssl': {
@@ -479,11 +468,193 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthSslRouteImport
       parentRoute: typeof AuthRoute
     }
-    '/_auth/users': {
-      id: '/_auth/users'
-      path: '/users'
-      fullPath: '/users'
-      preLoaderRoute: typeof AuthUsersRouteImport
+    '/_auth/snapshots': {
+      id: '/_auth/snapshots'
+      path: '/snapshots'
+      fullPath: '/snapshots'
+      preLoaderRoute: typeof AuthSnapshotsRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/service-accounts': {
+      id: '/_auth/service-accounts'
+      path: '/service-accounts'
+      fullPath: '/service-accounts'
+      preLoaderRoute: typeof AuthServiceAccountsRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/runbooks': {
+      id: '/_auth/runbooks'
+      path: '/runbooks'
+      fullPath: '/runbooks'
+      preLoaderRoute: typeof AuthRunbooksRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/platform': {
+      id: '/_auth/platform'
+      path: '/platform'
+      fullPath: '/platform'
+      preLoaderRoute: typeof AuthPlatformRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/performance': {
+      id: '/_auth/performance'
+      path: '/performance'
+      fullPath: '/performance'
+      preLoaderRoute: typeof AuthPerformanceRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/nodes': {
+      id: '/_auth/nodes'
+      path: '/nodes'
+      fullPath: '/nodes'
+      preLoaderRoute: typeof AuthNodesRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/network': {
+      id: '/_auth/network'
+      path: '/network'
+      fullPath: '/network'
+      preLoaderRoute: typeof AuthNetworkRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/modsecurity': {
+      id: '/_auth/modsecurity'
+      path: '/modsecurity'
+      fullPath: '/modsecurity'
+      preLoaderRoute: typeof AuthModsecurityRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/metrics': {
+      id: '/_auth/metrics'
+      path: '/metrics'
+      fullPath: '/metrics'
+      preLoaderRoute: typeof AuthMetricsRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/maintenance': {
+      id: '/_auth/maintenance'
+      path: '/maintenance'
+      fullPath: '/maintenance'
+      preLoaderRoute: typeof AuthMaintenanceRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/logs': {
+      id: '/_auth/logs'
+      path: '/logs'
+      fullPath: '/logs'
+      preLoaderRoute: typeof AuthLogsRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/jobs': {
+      id: '/_auth/jobs'
+      path: '/jobs'
+      fullPath: '/jobs'
+      preLoaderRoute: typeof AuthJobsRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/identity': {
+      id: '/_auth/identity'
+      path: '/identity'
+      fullPath: '/identity'
+      preLoaderRoute: typeof AuthIdentityRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/hardening': {
+      id: '/_auth/hardening'
+      path: '/hardening'
+      fullPath: '/hardening'
+      preLoaderRoute: typeof AuthHardeningRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/fleet-alerts': {
+      id: '/_auth/fleet-alerts'
+      path: '/fleet-alerts'
+      fullPath: '/fleet-alerts'
+      preLoaderRoute: typeof AuthFleetAlertsRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/firewall': {
+      id: '/_auth/firewall'
+      path: '/firewall'
+      fullPath: '/firewall'
+      preLoaderRoute: typeof AuthFirewallRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/domains': {
+      id: '/_auth/domains'
+      path: '/domains'
+      fullPath: '/domains'
+      preLoaderRoute: typeof AuthDomainsRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/default-server': {
+      id: '/_auth/default-server'
+      path: '/default-server'
+      fullPath: '/default-server'
+      preLoaderRoute: typeof AuthDefaultServerRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/dashboard': {
+      id: '/_auth/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof AuthDashboardRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/configuration': {
+      id: '/_auth/configuration'
+      path: '/configuration'
+      fullPath: '/configuration'
+      preLoaderRoute: typeof AuthConfigurationRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/backup': {
+      id: '/_auth/backup'
+      path: '/backup'
+      fullPath: '/backup'
+      preLoaderRoute: typeof AuthBackupRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/authentication': {
+      id: '/_auth/authentication'
+      path: '/authentication'
+      fullPath: '/authentication'
+      preLoaderRoute: typeof AuthAuthenticationRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/audit': {
+      id: '/_auth/audit'
+      path: '/audit'
+      fullPath: '/audit'
+      preLoaderRoute: typeof AuthAuditRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/alerts': {
+      id: '/_auth/alerts'
+      path: '/alerts'
+      fullPath: '/alerts'
+      preLoaderRoute: typeof AuthAlertsRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/acl': {
+      id: '/_auth/acl'
+      path: '/acl'
+      fullPath: '/acl'
+      preLoaderRoute: typeof AuthAclRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/account': {
+      id: '/_auth/account'
+      path: '/account'
+      fullPath: '/account'
+      preLoaderRoute: typeof AuthAccountRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/access-lists': {
+      id: '/_auth/access-lists'
+      path: '/access-lists'
+      fullPath: '/access-lists'
+      preLoaderRoute: typeof AuthAccessListsRouteImport
       parentRoute: typeof AuthRoute
     }
   }
@@ -494,6 +665,7 @@ interface AuthRouteChildren {
   AuthAccountRoute: typeof AuthAccountRoute
   AuthAclRoute: typeof AuthAclRoute
   AuthAlertsRoute: typeof AuthAlertsRoute
+  AuthAuditRoute: typeof AuthAuditRoute
   AuthAuthenticationRoute: typeof AuthAuthenticationRoute
   AuthBackupRoute: typeof AuthBackupRoute
   AuthConfigurationRoute: typeof AuthConfigurationRoute
@@ -501,13 +673,21 @@ interface AuthRouteChildren {
   AuthDefaultServerRoute: typeof AuthDefaultServerRoute
   AuthDomainsRoute: typeof AuthDomainsRoute
   AuthFirewallRoute: typeof AuthFirewallRoute
+  AuthFleetAlertsRoute: typeof AuthFleetAlertsRoute
+  AuthHardeningRoute: typeof AuthHardeningRoute
+  AuthIdentityRoute: typeof AuthIdentityRoute
+  AuthJobsRoute: typeof AuthJobsRoute
   AuthLogsRoute: typeof AuthLogsRoute
   AuthMaintenanceRoute: typeof AuthMaintenanceRoute
+  AuthMetricsRoute: typeof AuthMetricsRoute
   AuthModsecurityRoute: typeof AuthModsecurityRoute
   AuthNetworkRoute: typeof AuthNetworkRoute
   AuthNodesRoute: typeof AuthNodesRoute
   AuthPerformanceRoute: typeof AuthPerformanceRoute
   AuthPlatformRoute: typeof AuthPlatformRoute
+  AuthRunbooksRoute: typeof AuthRunbooksRoute
+  AuthServiceAccountsRoute: typeof AuthServiceAccountsRoute
+  AuthSnapshotsRoute: typeof AuthSnapshotsRoute
   AuthSslRoute: typeof AuthSslRoute
   AuthUsersRoute: typeof AuthUsersRoute
   AuthIndexRoute: typeof AuthIndexRoute
@@ -518,6 +698,7 @@ const AuthRouteChildren: AuthRouteChildren = {
   AuthAccountRoute: AuthAccountRoute,
   AuthAclRoute: AuthAclRoute,
   AuthAlertsRoute: AuthAlertsRoute,
+  AuthAuditRoute: AuthAuditRoute,
   AuthAuthenticationRoute: AuthAuthenticationRoute,
   AuthBackupRoute: AuthBackupRoute,
   AuthConfigurationRoute: AuthConfigurationRoute,
@@ -525,13 +706,21 @@ const AuthRouteChildren: AuthRouteChildren = {
   AuthDefaultServerRoute: AuthDefaultServerRoute,
   AuthDomainsRoute: AuthDomainsRoute,
   AuthFirewallRoute: AuthFirewallRoute,
+  AuthFleetAlertsRoute: AuthFleetAlertsRoute,
+  AuthHardeningRoute: AuthHardeningRoute,
+  AuthIdentityRoute: AuthIdentityRoute,
+  AuthJobsRoute: AuthJobsRoute,
   AuthLogsRoute: AuthLogsRoute,
   AuthMaintenanceRoute: AuthMaintenanceRoute,
+  AuthMetricsRoute: AuthMetricsRoute,
   AuthModsecurityRoute: AuthModsecurityRoute,
   AuthNetworkRoute: AuthNetworkRoute,
   AuthNodesRoute: AuthNodesRoute,
   AuthPerformanceRoute: AuthPerformanceRoute,
   AuthPlatformRoute: AuthPlatformRoute,
+  AuthRunbooksRoute: AuthRunbooksRoute,
+  AuthServiceAccountsRoute: AuthServiceAccountsRoute,
+  AuthSnapshotsRoute: AuthSnapshotsRoute,
   AuthSslRoute: AuthSslRoute,
   AuthUsersRoute: AuthUsersRoute,
   AuthIndexRoute: AuthIndexRoute,

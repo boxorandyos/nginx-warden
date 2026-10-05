@@ -17,6 +17,11 @@ import {
   Flame,
   KeyRound,
   Wrench,
+  BookOpen,
+  ScrollText,
+  ShieldCheck,
+  BarChart3,
+  BellRing,
 } from 'lucide-react';
 
 /** Distinct section-based IA (not sidebar-style “groups”) */
@@ -61,8 +66,10 @@ export const appNavSections: NavSection[] = [
     sectionKey: 'nav.section.telemetry',
     items: [
       { path: '/logs', navKey: 'nav.logs', icon: FileText },
-      { path: '/alerts', navKey: 'nav.alerts', icon: Bell },
+      { path: '/fleet-alerts', navKey: 'nav.alerts', icon: Bell },
+      { path: '/alerts', navKey: 'nav.notifications', icon: BellRing },
       { path: '/performance', navKey: 'nav.performance', icon: Activity },
+      { path: '/metrics', navKey: 'nav.metrics', icon: BarChart3 },
     ],
   },
   {
@@ -70,11 +77,18 @@ export const appNavSections: NavSection[] = [
     id: 'control-plane',
     sectionKey: 'nav.section.control',
     items: [
-      { path: '/backup', navKey: 'nav.backup', icon: Database },
       { path: '/users', navKey: 'nav.users', icon: Users },
+      { path: '/service-accounts', navKey: 'nav.serviceAccounts', icon: Users },
+      { path: '/identity', navKey: 'nav.identity', icon: KeyRound },
       { path: '/nodes', navKey: 'nav.nodes', icon: Server },
-      { path: '/configuration', navKey: 'nav.configuration', icon: Settings },
       { path: '/maintenance', navKey: 'nav.maintenance', icon: Wrench },
+      { path: '/snapshots', navKey: 'nav.snapshots', icon: Database },
+      { path: '/backup', navKey: 'nav.backup', icon: Database },
+      { path: '/jobs', navKey: 'nav.jobs', icon: Activity },
+      { path: '/runbooks', navKey: 'nav.runbooks', icon: BookOpen },
+      { path: '/hardening', navKey: 'nav.hardening', icon: ShieldCheck },
+      { path: '/audit', navKey: 'nav.audit', icon: ScrollText },
+      { path: '/configuration', navKey: 'nav.configuration', icon: Settings },
       { path: '/platform', navKey: 'nav.platform', icon: Server },
     ],
   },

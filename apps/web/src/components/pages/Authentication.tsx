@@ -51,7 +51,7 @@ function isConfigured(p: AuthProviderConfig): boolean {
   return false;
 }
 
-export default function Authentication() {
+export default function Authentication({ providersOnly = false }: { providersOnly?: boolean }) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
@@ -249,18 +249,18 @@ export default function Authentication() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
           <KeyRound className="h-6 w-6" />
-          {t('identity.title')}
+          {providersOnly ? 'Identity' : t('identity.title')}
         </h1>
-        <p className="text-muted-foreground mt-1">{t('identity.subtitle')}</p>
+        <p className="text-muted-foreground mt-1">{providersOnly ? 'LDAP and OpenID Connect for this console.' : t('identity.subtitle')}</p>
       </div>
 
       <Tabs defaultValue="providers">
-        <TabsList>
+        {!providersOnly && <TabsList>
           <TabsTrigger value="providers">{t('identity.tabs.providers')}</TabsTrigger>
           <TabsTrigger value="policies">{t('identity.tabs.policies')}</TabsTrigger>
           <TabsTrigger value="abuse">{t('identity.tabs.abuse')}</TabsTrigger>
           <TabsTrigger value="audit">{t('identity.tabs.audit')}</TabsTrigger>
-        </TabsList>
+        </TabsList>}
 
         <TabsContent value="providers" className="space-y-4 mt-4">
           <Alert>

@@ -15,7 +15,7 @@ sudo UPGRADE_NODE_CONFIRM=1 bash scripts/upgrade-node.sh 22
 sudo bash scripts/update.sh
 ```
 
-The same page's **Copy Postgres to 18** runs `scripts/upgrade-postgres.sh 18`. Web system update is enabled unless `ENABLE_WEB_SYSTEM_UPDATE` is `false` or `0`. `WARDEN_ALLOW_HOST_UPDATE=0` makes the API return the command instead of running it.
+The same page's **Copy Postgres to 18** runs `scripts/upgrade-postgres.sh 18`. Host actions stay planned until `ENABLE_WEB_SYSTEM_UPDATE=1` or `WARDEN_ALLOW_HOST_UPDATE=1`. `WARDEN_ALLOW_HOST_UPDATE=0` plans the command even when the nginx flag is on.
 
 `22` is the newest long-term support line this API can run. The script refuses to install an older major than the one already on the machine.
 

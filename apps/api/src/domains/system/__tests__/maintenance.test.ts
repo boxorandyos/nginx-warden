@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { maintenanceKeyMatches, parseMaintenanceKind, planSlaveUpgrades, slaveMaintenanceUrl } from '../maintenance';
+import { hostUpdateAllowed, maintenanceKeyMatches, parseMaintenanceKind, planSlaveUpgrades, slaveMaintenanceUrl, webSystemUpdateEnabled } from '../maintenance';
 
 describe('maintenance planning', () => {
   it('accepts product and package kinds', () => {
@@ -21,6 +21,18 @@ describe('maintenance planning', () => {
     expect(call.headers['X-API-Key']).toBe('secret-key');
     expect(call.body).toEqual({ kind: 'packages' });
     expect(planSlaveUpgrades([], 'product')).toEqual([]);
+  });
+
+  it('plans a host update unless a flag explicitly allows it', () => {
+    expect(webSystemUpdateEnabled(undefined)).toBe(false);
+    expect(webSystemUpdateEnabled('false')).toBe(false);
+    expect(webSystemUpdateEnabled('1')).toBe(true);
+    expect(hostUpdateAllowed(false, undefined)).toBe(false);
+    expect(hostUpdateAllowed(true, undefined)).toBe(true);
+    expect(hostUpdateAllowed(false, '1')).toBe(true);
+    expect(hostUpdateAllowed(true, '0')).toBe(false);
+    expect(hostUpdateAllowed(false, 'true')).toBe(true);
+    expect(hostUpdateAllowed(true, 'false')).toBe(false);
   });
 
   it('rejects a host that could change the request target', () => {

@@ -28,11 +28,18 @@ export interface SlaveUpgradeCall {
   body: { kind: MaintenanceKind };
 }
 
+/** Explicit 1/true runs. Explicit 0/false plans. Unset plans, on every Warden. */
+export function webSystemUpdateEnabled(value = process.env.ENABLE_WEB_SYSTEM_UPDATE): boolean {
+  return value === '1' || value === 'true';
+}
+
 export function hostUpdateAllowed(productDefault: boolean, override = process.env.WARDEN_ALLOW_HOST_UPDATE): boolean {
-  if (override === '1') return true;
-  if (override === '0') return false;
+  if (override === '1' || override === 'true') return true;
+  if (override === '0' || override === 'false') return false;
   return productDefault;
 }
+
+export const HOST_UPDATE_HINT = 'set WARDEN_ALLOW_HOST_UPDATE=1 to run it';
 
 export function parseMaintenanceKind(value: unknown): MaintenanceKind {
   if (value === 'product' || value === 'packages') return value;

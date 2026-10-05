@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { hostUpdateAllowed } from './maintenance';
+import { hostUpdateAllowed, webSystemUpdateEnabled } from './maintenance';
 import { describeRuntimes, planRuntime, runtimeTargets, type RuntimeComponent } from './runtime-plan';
 import { resolveProjectRoot } from './system-update.service';
 
@@ -10,7 +10,7 @@ export function listRuntimes() {
 }
 
 export async function scheduleRuntimeUpgrade(component: string): Promise<{ component: RuntimeComponent; executed: boolean; detail: string }> {
-  const productEnabled = process.env.ENABLE_WEB_SYSTEM_UPDATE !== 'false' && process.env.ENABLE_WEB_SYSTEM_UPDATE !== '0';
+  const productEnabled = webSystemUpdateEnabled();
   const plan = planRuntime(component, hostUpdateAllowed(productEnabled));
   if (!plan.executed) return plan;
   const spec = runtimeTargets[plan.component];

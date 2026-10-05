@@ -68,7 +68,7 @@ The script installs dependencies, builds API + UI, configures **systemd** units 
 - **API bind:** `HOST=0.0.0.0` (default) so the API listens on all interfaces; see `apps/api/.env.example`.
 - **SPA → API URL:** `VITE_API_URL=auto` (default) uses the **same browser hostname** and port **3001** for API calls; use `VITE_API_USE_FIXED` + explicit `VITE_API_URL` only if the API is on a different host.
 - **Monorepo path for jobs:** `NGINX_WARDEN_ROOT` if the API cannot infer the repo root.
-- **Web-triggered update:** `ENABLE_WEB_SYSTEM_UPDATE`, `UPDATE_GIT_BRANCH`, `UPDATE_GIT_REMOTE` — see Fleet → Maintenance.
+- **Web-triggered update:** Fleet → Maintenance stays planned until `ENABLE_WEB_SYSTEM_UPDATE=1` (or `true`). `WARDEN_ALLOW_HOST_UPDATE=1` runs it, and `WARDEN_ALLOW_HOST_UPDATE=0` plans it. `UPDATE_GIT_BRANCH` and `UPDATE_GIT_REMOTE` choose the git source.
 
 ---
 
@@ -84,9 +84,9 @@ sudo bash scripts/update.sh
 
 `update.sh` stops services, installs deps, runs migrations, rebuilds, restarts systemd units, and updates nginx config from `config/nginx.conf` when present. It does not change the Node major or the PostgreSQL major. A new install uses Node 22 and Postgres 18. An existing Node install and an existing database volume stay put until Fleet → Maintenance starts the move. See [apps/docs/guide/runtime-upgrades.md](apps/docs/guide/runtime-upgrades.md).
 
-**UI:** Admins can run **Download & update** (git pull + `update.sh`) from Fleet → Maintenance; requires API as root and may take many minutes—avoid short proxy timeouts. **Update packages** upgrades installed packages from a fixed list (`nginx`, `keepalived`, `crowdsec`, `ca-certificates`, `openssl`) via `scripts/update-packages.sh`. **Upgrade slaves** asks each enabled slave to run the product update. The slave must be in slave mode and must have the master's API key configured. The slave receives `POST /api/slave/maintenance`. `WARDEN_ALLOW_HOST_UPDATE=0` plans the script instead of running it. `GET /metrics` exposes Prometheus text.
+**UI:** Admins confirm **Update product** (git pull + `update.sh`) from Fleet → Maintenance. It requires the API as root and may take many minutes—avoid short proxy timeouts. It stays planned until `ENABLE_WEB_SYSTEM_UPDATE=1` or `WARDEN_ALLOW_HOST_UPDATE=1`. **Update packages** upgrades installed packages from a fixed list (`nginx`, `keepalived`, `crowdsec`, `ca-certificates`, `openssl`) via `scripts/update-packages.sh`. **Upgrade slaves** asks each enabled slave to run the product update. The slave must be in slave mode and must have the master's API key configured. The slave receives `POST /api/slave/maintenance`. `WARDEN_ALLOW_HOST_UPDATE=0` plans the script instead of running it. `GET /metrics` exposes Prometheus text.
 
-**Platform:** `/platform` covers environments, `nw_` service accounts, jobs, runbooks, fleet alert rules, MFA and backup policies, config snapshots, and a push of that document to slaves (`POST /api/platform/sync`). Audit export is `GET /api/platform/audit/export?format=csv`.
+**Fleet:** User Management, Service Accounts, Identity (console LDAP and OIDC), Slave Nodes, Maintenance, Snapshots, Backups, Jobs, Runbooks, Hardening, and Audit. Snapshots stores the platform document and **Push to slaves** calls `POST /api/platform/sync`. Signals → Alerts creates fleet rules. Signals → Metrics shows platform metrics. Signals → Notifications is the product notification channels page. Barrier → Authentication stays the gateway login rules. `/platform` is environments only. Audit export is `GET /api/platform/audit/export?format=csv`.
 
 ---
 
