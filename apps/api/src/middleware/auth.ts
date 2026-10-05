@@ -23,6 +23,28 @@ export const authenticate = (
     }
 
     const token = authHeader.substring(7);
+    if (token.startsWith('nw_')) {
+      void import('../domains/platform/prisma-store')
+        .then(({ platformStore }) => platformStore.findAccount(token))
+        .then((account) => {
+          if (!account) {
+            res.status(401).json({ success: false, message: 'Invalid or expired token' });
+            return;
+          }
+          req.user = {
+            userId: account.id,
+            username: account.name,
+            email: account.name,
+            role: account.role,
+            environmentId: account.environmentId,
+          } as TokenPayload & { environmentId: string | null };
+          next();
+        })
+        .catch(() => {
+          res.status(401).json({ success: false, message: 'Invalid or expired token' });
+        });
+      return;
+    }
     const decoded = verifyAccessToken(token);
     
     req.user = decoded;

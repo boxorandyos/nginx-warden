@@ -7,7 +7,8 @@ import {
   getSlaveNodes,
   getSlaveNode,
   deleteSlaveNode,
-  healthCheck
+  healthCheck,
+  acceptMasterMaintenance
 } from './cluster.controller';
 
 const router = Router();
@@ -57,5 +58,12 @@ router.delete('/nodes/:id', authenticate, authorize('admin'), deleteSlaveNode);
  * @access  Slave API Key
  */
 router.get('/health', validateSlaveApiKey, healthCheck);
+
+/**
+ * @route   POST /api/slave/maintenance
+ * @desc    Master asks this slave to update the product or allowlisted packages
+ * @access  Master API key configured on this slave
+ */
+router.post('/maintenance', acceptMasterMaintenance);
 
 export default router;

@@ -9,6 +9,8 @@ import {
   getNetworkInterfaces,
   restartFrontend,
   runSystemUpdate,
+  runPackageUpdate,
+  upgradeSlaves,
   getSystemUpdateLog,
   connectToMaster,
   disconnectFromMaster,
@@ -30,6 +32,8 @@ router.put('/acme', authorize('admin'), updateAcmeSettings);
 router.get('/network-interfaces', authorize('admin'), getNetworkInterfaces);
 router.post('/restart-frontend', authorize('admin'), restartFrontend);
 router.post('/system-update', authorize('admin'), runSystemUpdate);
+router.post('/package-update', authorize('admin'), runPackageUpdate);
+router.post('/upgrade-slaves', authorize('admin'), upgradeSlaves);
 router.get('/system-update-log', authorize('admin'), getSystemUpdateLog);
 
 // Slave mode routes

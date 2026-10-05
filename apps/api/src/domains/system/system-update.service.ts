@@ -3,6 +3,7 @@ import { open } from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import logger from '../../utils/logger';
+import { hostUpdateAllowed } from './maintenance';
 
 /** Same path as scripts/update.sh (LOG_FILE) — shown in API response */
 export const NGINX_WARDEN_UI_UPDATE_LOG = '/var/log/nginx-warden-ui-update.log';
@@ -99,9 +100,13 @@ function systemdRunEnvArgs(env: Record<string, string | undefined>): string[] {
  * `systemd-run` starts the script in its own cgroup so the stop can complete.
  */
 export async function runGithubUpdateAndInstallScript(): Promise<SystemUpdateResult> {
-  const disabled = process.env.ENABLE_WEB_SYSTEM_UPDATE === 'false' || process.env.ENABLE_WEB_SYSTEM_UPDATE === '0';
-  if (disabled) {
-    throw new Error('Web-based system update is disabled. Set ENABLE_WEB_SYSTEM_UPDATE=true in the API .env.');
+  const productEnabled = process.env.ENABLE_WEB_SYSTEM_UPDATE !== 'false' && process.env.ENABLE_WEB_SYSTEM_UPDATE !== '0';
+  if (!hostUpdateAllowed(productEnabled)) {
+    return {
+      output: 'planned: scripts/apply-update-from-remote.sh (set WARDEN_ALLOW_HOST_UPDATE=1 or ENABLE_WEB_SYSTEM_UPDATE to run it)',
+      scheduled: false,
+      logFile: NGINX_WARDEN_UI_UPDATE_LOG,
+    };
   }
 
   const root = resolveProjectRoot();
@@ -167,6 +172,57 @@ export async function runGithubUpdateAndInstallScript(): Promise<SystemUpdateRes
 
   return {
     output,
+    scheduled: true,
+    logFile: NGINX_WARDEN_UI_UPDATE_LOG,
+  };
+}
+
+/**
+ * Upgrade the allowlisted host packages (nginx, keepalived, crowdsec, and TLS tools).
+ * The package list lives in scripts/update-packages.sh and is not taken from the request.
+ */
+export async function runPackageUpdateScript(): Promise<SystemUpdateResult> {
+  const productEnabled = process.env.ENABLE_WEB_SYSTEM_UPDATE !== 'false' && process.env.ENABLE_WEB_SYSTEM_UPDATE !== '0';
+  if (!hostUpdateAllowed(productEnabled)) {
+    return {
+      output: 'planned: scripts/update-packages.sh (set WARDEN_ALLOW_HOST_UPDATE=1 or ENABLE_WEB_SYSTEM_UPDATE to run it)',
+      scheduled: false,
+      logFile: NGINX_WARDEN_UI_UPDATE_LOG,
+    };
+  }
+
+  const root = resolveProjectRoot();
+  const script = path.join(root, 'scripts', 'update-packages.sh');
+  if (!fs.existsSync(script) || !fs.statSync(script).isFile()) {
+    throw new Error(`Package update script not found at ${script}. Set NGINX_WARDEN_ROOT to the install directory.`);
+  }
+
+  const scriptAbs = path.resolve(script);
+  const unitName = `nginx-warden-package-update-${Date.now()}`;
+  const child = spawn(
+    'systemd-run',
+    [
+      `--unit=${unitName}`,
+      '--collect',
+      '--no-block',
+      `-pWorkingDirectory=${root}`,
+      ...systemdRunEnvArgs(process.env),
+      'bash',
+      scriptAbs,
+    ],
+    { detached: true, stdio: 'ignore', env: process.env }
+  );
+  child.on('error', (err: Error) => {
+    logger.error('Failed to start systemd-run for update-packages.sh', err);
+  });
+  child.unref();
+  if (child.pid === undefined) {
+    throw new Error('Could not start package update');
+  }
+
+  logger.info('Package update scheduled via systemd-run', { pid: child.pid, unitName, root });
+  return {
+    output: `Package update scheduled.\nProgress is written to: ${NGINX_WARDEN_UI_UPDATE_LOG}`,
     scheduled: true,
     logFile: NGINX_WARDEN_UI_UPDATE_LOG,
   };

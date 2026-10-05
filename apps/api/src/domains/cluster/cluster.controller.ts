@@ -1,7 +1,10 @@
-import { Response } from 'express';
+import { Request, Response } from 'express';
+import prisma from '../../config/database';
 import { AuthRequest } from '../../middleware/auth';
 import { SlaveRequest } from './cluster.types';
 import { clusterService } from './cluster.service';
+import { maintenanceKeyMatches, parseMaintenanceKind } from '../system/maintenance';
+import { runLocalMaintenance } from '../system/slave-upgrade.service';
 import logger from '../../utils/logger';
 
 /**
@@ -115,5 +118,31 @@ export const healthCheck = async (req: SlaveRequest, res: Response): Promise<voi
       success: false,
       message: 'Health check failed'
     });
+  }
+};
+
+/**
+ * Master calls this on a slave with the API key the slave stored as masterApiKey.
+ */
+export const acceptMasterMaintenance = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const presented = req.header('x-api-key') ?? undefined;
+    const config = await prisma.systemConfig.findFirst();
+    if (!maintenanceKeyMatches(config?.masterApiKey, presented)) {
+      res.status(401).json({ success: false, message: 'Invalid API key' });
+      return;
+    }
+    if (config?.nodeMode !== 'slave') {
+      res.status(403).json({ success: false, message: 'This node is not a slave' });
+      return;
+    }
+    const kind = parseMaintenanceKind(req.body?.kind);
+    const result = await runLocalMaintenance(kind);
+    logger.info('Accepted maintenance from master', { kind });
+    res.json({ success: true, message: 'Maintenance scheduled', data: result });
+  } catch (error) {
+    logger.error('Master maintenance error:', error);
+    const message = error instanceof Error ? error.message : 'Maintenance failed';
+    res.status(message.includes('kind must') ? 400 : 500).json({ success: false, message });
   }
 };

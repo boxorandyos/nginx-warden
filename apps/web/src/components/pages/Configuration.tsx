@@ -151,6 +151,48 @@ export default function Configuration() {
     },
   });
 
+  const packageUpdateMutation = useMutation({
+    mutationFn: () => systemConfigService.runPackageUpdate(),
+    onSuccess: (res) => {
+      if (!res.success) {
+        toast.error(res.message || t('configuration.systemUpdate.toast.failed'));
+        return;
+      }
+      toast.success(t('configuration.systemUpdate.toast.scheduled'));
+      setPollUpdateLog(true);
+    },
+    onError: (err: unknown) => {
+      const msg =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+          : undefined;
+      toast.error(msg || t('configuration.systemUpdate.toast.failed'));
+    },
+  });
+
+  const slaveUpgradeMutation = useMutation({
+    mutationFn: () => systemConfigService.upgradeSlaves('product'),
+    onSuccess: (res) => {
+      if (!res.success) {
+        toast.error(res.message || t('configuration.systemUpdate.toast.failed'));
+        return;
+      }
+      const failed = res.data?.results.filter((item) => item.status < 200 || item.status >= 300).length ?? 0;
+      toast.success(
+        failed
+          ? `${res.data?.results.length ?? 0} slaves contacted, ${failed} failed`
+          : `${res.data?.results.length ?? 0} slaves contacted`,
+      );
+    },
+    onError: (err: unknown) => {
+      const msg =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+          : undefined;
+      toast.error(msg || t('configuration.systemUpdate.toast.failed'));
+    },
+  });
+
   const restartMutation = useMutation({
     mutationFn: () => systemConfigService.restartFrontend(),
     onSuccess: (res) => {
@@ -217,6 +259,40 @@ export default function Configuration() {
                 >
                   {t('configuration.systemUpdate.confirm')}
                 </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button type="button" variant="outline" disabled={!isAdmin || packageUpdateMutation.isPending}>
+                {t('configuration.packageUpdate.button')}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent className="max-w-lg">
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t('configuration.packageUpdate.confirmTitle')}</AlertDialogTitle>
+                <AlertDialogDescription className="text-left">{t('configuration.packageUpdate.confirmDesc')}</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{t('configuration.systemUpdate.cancel')}</AlertDialogCancel>
+                <AlertDialogAction onClick={() => packageUpdateMutation.mutate()}>{t('configuration.packageUpdate.confirm')}</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button type="button" variant="outline" disabled={!isAdmin || slaveUpgradeMutation.isPending}>
+                {t('configuration.slaveUpgrade.button')}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent className="max-w-lg">
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t('configuration.slaveUpgrade.confirmTitle')}</AlertDialogTitle>
+                <AlertDialogDescription className="text-left">{t('configuration.slaveUpgrade.confirmDesc')}</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{t('configuration.systemUpdate.cancel')}</AlertDialogCancel>
+                <AlertDialogAction onClick={() => slaveUpgradeMutation.mutate()}>{t('configuration.slaveUpgrade.confirm')}</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>

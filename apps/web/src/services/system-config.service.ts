@@ -60,6 +60,20 @@ export const systemConfigService = {
     return response.data;
   },
 
+  runPackageUpdate: async (): Promise<
+    ApiResponse<{ output: string; scheduled: boolean; logFile: string }>
+  > => {
+    const response = await api.post('/system-config/package-update', {}, { timeout: 120_000 });
+    return response.data;
+  },
+
+  upgradeSlaves: async (kind: 'product' | 'packages'): Promise<
+    ApiResponse<{ kind: string; results: Array<{ id: string; name: string; status: number; message: string }> }>
+  > => {
+    const response = await api.post('/system-config/upgrade-slaves', { kind }, { timeout: 120_000 });
+    return response.data;
+  },
+
   /** Tail of /var/log/nginx-warden-ui-update.log (short timeout; safe to poll while backend restarts) */
   getSystemUpdateLog: async (): Promise<
     ApiResponse<{ content: string; path: string; exists: boolean; truncated: boolean }>

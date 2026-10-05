@@ -84,7 +84,9 @@ sudo bash scripts/update.sh
 
 `update.sh` stops services, installs deps, runs migrations, rebuilds, restarts systemd units, and updates nginx config from `config/nginx.conf` when present.
 
-**UI:** Admins can run **Download & update** (git pull + `update.sh`) from Configuration; requires API as root and may take many minutes—avoid short proxy timeouts.
+**UI:** Admins can run **Download & update** (git pull + `update.sh`) from Configuration; requires API as root and may take many minutes—avoid short proxy timeouts. **Update packages** upgrades installed packages from a fixed list (`nginx`, `keepalived`, `crowdsec`, `ca-certificates`, `openssl`) via `scripts/update-packages.sh`. **Upgrade slaves** asks each enabled slave to run the product update. The slave must be in slave mode and must have the master's API key configured. The slave receives `POST /api/slave/maintenance`. `WARDEN_ALLOW_HOST_UPDATE=0` plans the script instead of running it. `GET /metrics` exposes Prometheus text.
+
+**Platform:** `/platform` covers environments, `nw_` service accounts, jobs, runbooks, fleet alert rules, MFA and backup policies, config snapshots, and a push of that document to slaves (`POST /api/platform/sync`). Audit export is `GET /api/platform/audit/export?format=csv`.
 
 ---
 
