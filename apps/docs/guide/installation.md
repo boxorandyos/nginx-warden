@@ -125,8 +125,8 @@ sudo apt install -y curl wget git build-essential
 ### 2. Install Node.js and pnpm
 
 ```bash
-# Install Node.js 20.x
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+# Install Node.js 22.x (newest LTS this API's Prisma 5 line can run)
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt-get install -y nodejs
 
 # Install pnpm
@@ -137,7 +137,7 @@ node --version
 pnpm --version
 ```
 
-A new machine still gets Node 20 from the commands above. Moving an existing server to a newer Node or PostgreSQL major is a separate step, described in [Runtime upgrades](./runtime-upgrades). `scripts/update.sh` does not do that by itself.
+A new machine gets Node 22 from the commands above, and `scripts/deploy.sh` creates a Postgres 18 volume when none exists. An existing Node and an existing database volume are left as they are. Fleet → Configuration starts the move. Details are in [Runtime upgrades](./runtime-upgrades).
 
 ### 3. Install Docker and Docker Compose
 

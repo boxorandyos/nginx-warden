@@ -52,7 +52,7 @@ if [ "${USE_DOCKER}" = true ]; then
         -e POSTGRES_USER="${DB_USER}" \
         -e POSTGRES_PASSWORD="${DB_PASSWORD}" \
         -p "${DB_PORT}":5432 \
-        postgres:15-alpine > /dev/null
+        postgres:18-alpine > /dev/null
     
     echo "✅ PostgreSQL started in Docker"
     echo "   Waiting for database to be ready..."

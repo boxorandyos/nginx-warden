@@ -60,6 +60,22 @@ export const systemConfigService = {
     return response.data;
   },
 
+  getRuntimes: async (): Promise<
+    ApiResponse<{
+      components: Array<{ id: string; current: string; newInstall: string; latestLts: string; note: string; canRun: boolean }>;
+    }>
+  > => {
+    const response = await api.get('/system-config/runtimes');
+    return response.data;
+  },
+
+  runRuntimeUpgrade: async (component: 'node' | 'postgres'): Promise<
+    ApiResponse<{ component: string; executed: boolean; detail: string }>
+  > => {
+    const response = await api.post('/system-config/runtime-upgrade', { component }, { timeout: 120_000 });
+    return response.data;
+  },
+
   runPackageUpdate: async (): Promise<
     ApiResponse<{ output: string; scheduled: boolean; logFile: string }>
   > => {

@@ -211,6 +211,25 @@ export default function Configuration() {
     },
   });
 
+  const runtimes = useQuery({
+    queryKey: ['system-config', 'runtimes'],
+    queryFn: () => systemConfigService.getRuntimes(),
+    enabled: isAdmin,
+  });
+  const runtimeMutation = useMutation({
+    mutationFn: (component: 'node' | 'postgres') => systemConfigService.runRuntimeUpgrade(component),
+    onSuccess: (res) => {
+      toast.success(res.data?.detail || res.message || t('configuration.runtime.confirm'));
+    },
+    onError: (err: unknown) => {
+      const msg =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+          : undefined;
+      toast.error(msg || t('configuration.systemUpdate.toast.failed'));
+    },
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
@@ -395,6 +414,47 @@ export default function Configuration() {
                   })()}
                 </pre>
               </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('configuration.runtime.title')}</CardTitle>
+          <CardDescription>{t('configuration.runtime.description')}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {runtimes.data?.data?.components.map((row) => (
+            <div key={row.id} className="rounded-md border border-border p-3 text-sm">
+              <div className="font-medium">{row.id}</div>
+              <p className="text-muted-foreground">
+                Running {row.current}. New install {row.newInstall}. Latest long-term line {row.latestLts}.
+              </p>
+              <p className="mt-1 text-muted-foreground">{row.note}</p>
+            </div>
+          ))}
+          {isAdmin && (
+            <div className="flex flex-wrap gap-2">
+              {(['node', 'postgres'] as const).map((component) => (
+                <AlertDialog key={component}>
+                  <AlertDialogTrigger asChild>
+                    <Button type="button" variant="outline" disabled={runtimeMutation.isPending}>
+                      {t(component === 'node' ? 'configuration.runtime.node' : 'configuration.runtime.postgres')}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent className="max-w-lg">
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>{t('configuration.runtime.confirmTitle')}</AlertDialogTitle>
+                      <AlertDialogDescription className="text-left">{t('configuration.runtime.description')}</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>{t('configuration.systemUpdate.cancel')}</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => runtimeMutation.mutate(component)}>{t('configuration.runtime.confirm')}</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              ))}
             </div>
           )}
         </CardContent>

@@ -140,19 +140,19 @@ log "✓ Base packages (bootstrap): openssl, curl, wget, ca-certificates, python
 
 # Check Node.js
 if ! command -v node &> /dev/null; then
-    warn "Node.js not found. Installing Node.js 20.x..."
-    warden_http_get "https://deb.nodesource.com/setup_20.x" | bash - >> "$LOG_FILE" 2>&1 || error "Failed to download Node.js setup script"
+    warn "Node.js not found. Installing Node.js 22.x (newest LTS this API can run)..."
+    warden_http_get "https://deb.nodesource.com/setup_22.x" | bash - >> "$LOG_FILE" 2>&1 || error "Failed to download Node.js setup script"
     apt-get install -y nodejs >> "$LOG_FILE" 2>&1 || error "Failed to install Node.js"
     log "✓ Node.js $(node -v) installed successfully"
 else
     NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
     if [ "${NODE_VERSION}" -lt 18 ]; then
-        warn "Node.js version too old ($(node -v)). Upgrading to 20.x..."
-        warden_http_get "https://deb.nodesource.com/setup_20.x" | bash - >> "$LOG_FILE" 2>&1
+        warn "Node.js version too old ($(node -v)). Upgrading to 22.x..."
+        warden_http_get "https://deb.nodesource.com/setup_22.x" | bash - >> "$LOG_FILE" 2>&1
         apt-get install -y nodejs >> "$LOG_FILE" 2>&1 || error "Failed to upgrade Node.js"
         log "✓ Node.js upgraded to $(node -v)"
     else
-        log "✓ Node.js $(node -v) detected"
+        log "✓ Node.js $(node -v) detected (left in place; Fleet → Configuration can move it)"
     fi
 fi
 
@@ -249,17 +249,20 @@ log "✓ Package manager: ${PKG_MANAGER}"
 # Step 2: Setup PostgreSQL with Docker
 log "Step 2/8: Setting up PostgreSQL with Docker..."
 
-# Stop and remove existing container if exists
-if docker ps -a | grep -q "${DB_CONTAINER_NAME}"; then
-    log "Removing existing PostgreSQL container..."
-    docker stop "${DB_CONTAINER_NAME}" 2>/dev/null || true
-    docker rm "${DB_CONTAINER_NAME}" 2>/dev/null || true
-fi
-
-# Remove old volume to ensure clean installation
-if docker volume ls | grep -q nginx-warden-postgres-data; then
-    log "Removing old PostgreSQL volume for clean installation..."
-    docker volume rm nginx-warden-postgres-data 2>/dev/null || true
+# A new volume uses the current Postgres major. An existing volume keeps its own image.
+KEEP_DB=0
+POSTGRES_IMAGE="postgres:18-alpine"
+POSTGRES_IMAGE_FILE="/etc/nginx-warden/postgres.image"
+if docker volume ls -q | grep -qx 'nginx-warden-postgres-data'; then
+    KEEP_DB=1
+    if [ -f "${POSTGRES_IMAGE_FILE}" ]; then
+        POSTGRES_IMAGE="$(tr -d '[:space:]' < "${POSTGRES_IMAGE_FILE}")"
+    else
+        POSTGRES_IMAGE="postgres:15-alpine"
+    fi
+    log "Keeping existing PostgreSQL volume on ${POSTGRES_IMAGE}"
+else
+    log "No PostgreSQL volume yet. A new install uses ${POSTGRES_IMAGE}"
 fi
 
 # Create Docker network if not exists
@@ -268,18 +271,25 @@ if ! docker network ls | grep -q nginx-warden-network; then
     log "✓ Docker network created"
 fi
 
-# Start PostgreSQL container
-log "Starting PostgreSQL container..."
-docker run -d \
-    --name "${DB_CONTAINER_NAME}" \
-    --network nginx-warden-network \
-    -e POSTGRES_DB="${DB_NAME}" \
-    -e POSTGRES_USER="${DB_USER}" \
-    -e POSTGRES_PASSWORD="${DB_PASSWORD}" \
-    -p 127.0.0.1:"${WARDEN_DB_HOST_PORT}":5432 \
-    -v nginx-warden-postgres-data:/var/lib/postgresql/data \
-    --restart unless-stopped \
-    postgres:15-alpine >> "${LOG_FILE}" 2>&1 || error "Failed to start PostgreSQL container"
+if docker ps -a --format '{{.Names}}' | grep -qx "${DB_CONTAINER_NAME}"; then
+    log "Starting existing PostgreSQL container ${DB_CONTAINER_NAME}"
+    docker start "${DB_CONTAINER_NAME}" >> "${LOG_FILE}" 2>&1 || error "Failed to start PostgreSQL container"
+else
+    log "Starting PostgreSQL container (${POSTGRES_IMAGE})..."
+    docker run -d \
+        --name "${DB_CONTAINER_NAME}" \
+        --network nginx-warden-network \
+        -e POSTGRES_DB="${DB_NAME}" \
+        -e POSTGRES_USER="${DB_USER}" \
+        -e POSTGRES_PASSWORD="${DB_PASSWORD}" \
+        -p 127.0.0.1:"${WARDEN_DB_HOST_PORT}":5432 \
+        -v nginx-warden-postgres-data:/var/lib/postgresql/data \
+        --restart unless-stopped \
+        "${POSTGRES_IMAGE}" >> "${LOG_FILE}" 2>&1 || error "Failed to start PostgreSQL container"
+    if [ "${KEEP_DB}" -eq 0 ]; then
+        printf '%s\n' "${POSTGRES_IMAGE}" > "${POSTGRES_IMAGE_FILE}"
+    fi
+fi
 
 # Wait for PostgreSQL to be ready
 log "Waiting for PostgreSQL to be ready..."
@@ -325,7 +335,10 @@ fi
 
 cd "${BACKEND_DIR}"
 
-# Create backend .env from .env.example (always create fresh)
+# Create backend .env from .env.example. An existing database keeps its file so the password still matches.
+if [ "${KEEP_DB}" -eq 1 ] && [ -f "${BACKEND_DIR}/.env" ]; then
+    log "Keeping existing backend .env"
+else
 log "Creating fresh backend .env from .env.example..."
 cat > ".env" <<EOF
 # Database Configuration
@@ -373,12 +386,12 @@ SMTP_PASS="change-this-to-random-password"
 EOF
 
 log "✅ Created fresh backend .env"
-
 log "✓ Backend .env configured with:"
 log "  • Database: PostgreSQL (Docker) localhost:${WARDEN_DB_HOST_PORT}"
 log "  • API PORT=${WARDEN_API_PORT} UI PORT=${WARDEN_UI_PORT}"
 log "  • CORS: ${ACCESS_IP}:${WARDEN_UI_PORT} (+ localhost/127); CrowdSec LAPI ${CROWDSEC_LAPI_PORT}"
 log "  • JWT Secrets: Generated (64 chars each)"
+fi
 
 # Generate Prisma Client
 log "Generating Prisma client..."

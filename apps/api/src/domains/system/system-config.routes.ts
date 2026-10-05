@@ -10,6 +10,8 @@ import {
   restartFrontend,
   runSystemUpdate,
   runPackageUpdate,
+  getRuntimes,
+  runRuntimeUpgrade,
   upgradeSlaves,
   getSystemUpdateLog,
   connectToMaster,
@@ -33,6 +35,8 @@ router.get('/network-interfaces', authorize('admin'), getNetworkInterfaces);
 router.post('/restart-frontend', authorize('admin'), restartFrontend);
 router.post('/system-update', authorize('admin'), runSystemUpdate);
 router.post('/package-update', authorize('admin'), runPackageUpdate);
+router.get('/runtimes', authorize('admin'), getRuntimes);
+router.post('/runtime-upgrade', authorize('admin'), runRuntimeUpgrade);
 router.post('/upgrade-slaves', authorize('admin'), upgradeSlaves);
 router.get('/system-update-log', authorize('admin'), getSystemUpdateLog);
 

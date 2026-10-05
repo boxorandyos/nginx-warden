@@ -6,6 +6,7 @@ import { listHostNetworkInterfaceNames } from './network-interfaces.service';
 import { parseMaintenanceKind } from './maintenance';
 import { triggerSlaveUpgrades } from './slave-upgrade.service';
 import { readSystemUpdateLogTail, runGithubUpdateAndInstallScript, runPackageUpdateScript } from './system-update.service';
+import { listRuntimes, scheduleRuntimeUpgrade } from './runtime.service';
 import { ResponseUtil } from '../../shared/utils/response.util';
 import { ValidationError, NotFoundError } from '../../shared/errors/app-error';
 
@@ -69,6 +70,23 @@ export const runSystemUpdate = async (req: AuthRequest, res: Response): Promise<
     logger.error('System update error:', error);
     const message = error instanceof Error ? error.message : 'System update failed';
     ResponseUtil.error(res, message, 500);
+  }
+};
+
+/** Node and Postgres majors. Admin only. Does not run unless host updates are enabled. */
+export const getRuntimes = async (_req: AuthRequest, res: Response): Promise<void> => {
+  ResponseUtil.success(res, { components: listRuntimes() }, 'Runtimes');
+};
+
+export const runRuntimeUpgrade = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const result = await scheduleRuntimeUpgrade(String(req.body?.component ?? ''));
+    logger.info('Runtime upgrade from UI', { userId: req.user?.userId, component: result.component, executed: result.executed });
+    ResponseUtil.success(res, result, result.executed ? 'Runtime upgrade scheduled' : 'Runtime upgrade planned');
+  } catch (error: unknown) {
+    logger.error('Runtime upgrade error:', error);
+    const message = error instanceof Error ? error.message : 'Runtime upgrade failed';
+    ResponseUtil.error(res, message, 400);
   }
 };
 

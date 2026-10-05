@@ -1,5 +1,5 @@
-# Production stage. NODE_IMAGE defaults to Node 20. Override to try a newer major without changing this file.
-ARG NODE_IMAGE=node:20-alpine
+# Production stage. NODE_IMAGE defaults to Node 22, the newest LTS Prisma 5 in this API can run.
+ARG NODE_IMAGE=node:22-alpine
 FROM ${NODE_IMAGE} AS builder
 
 # Install pnpm
