@@ -137,7 +137,7 @@ node --version
 pnpm --version
 ```
 
-A new machine gets Node 22 from the commands above, and `scripts/deploy.sh` creates a Postgres 18 volume when none exists. An existing Node and an existing database volume are left as they are. Fleet → Configuration starts the move. Details are in [Runtime upgrades](./runtime-upgrades).
+A new machine gets Node 22 from the commands above, and `scripts/deploy.sh` creates a Postgres 18 volume when none exists. An existing Node and an existing database volume are left as they are. Fleet → Maintenance starts the move. Details are in [Runtime upgrades](./runtime-upgrades).
 
 ### 3. Install Docker and Docker Compose
 

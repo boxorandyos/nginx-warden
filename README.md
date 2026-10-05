@@ -24,7 +24,7 @@ The **supported production target** is **Linux** (Ubuntu/Debian-style) with **ro
 |--------|-------------------|
 | **First-time production install** | `sudo bash scripts/deploy.sh` (from repo root; **CrowdSec** packages + LAPI keys in `apps/api/.env` + firewall template unless `WARDEN_SKIP_CROWDSEC=1`) |
 | **Upgrade (CLI)** | `git pull` then `sudo bash scripts/update.sh` |
-| **Upgrade (UI)** | Fleet → **Configuration** → *Download & update* (admin, API as root) |
+| **Upgrade (UI)** | Fleet → **Maintenance** → *Download & update* (admin, API as root) |
 | **Backend env** | `apps/api/.env` |
 | **Frontend build env** | `apps/web/.env` (e.g. `VITE_API_URL=auto`) |
 | **Saved deploy secrets** | `/root/.nginx-warden-credentials` (after `deploy.sh`) |
@@ -68,7 +68,7 @@ The script installs dependencies, builds API + UI, configures **systemd** units 
 - **API bind:** `HOST=0.0.0.0` (default) so the API listens on all interfaces; see `apps/api/.env.example`.
 - **SPA → API URL:** `VITE_API_URL=auto` (default) uses the **same browser hostname** and port **3001** for API calls; use `VITE_API_USE_FIXED` + explicit `VITE_API_URL` only if the API is on a different host.
 - **Monorepo path for jobs:** `NGINX_WARDEN_ROOT` if the API cannot infer the repo root.
-- **Web-triggered update:** `ENABLE_WEB_SYSTEM_UPDATE`, `UPDATE_GIT_BRANCH`, `UPDATE_GIT_REMOTE` — see Fleet → Configuration.
+- **Web-triggered update:** `ENABLE_WEB_SYSTEM_UPDATE`, `UPDATE_GIT_BRANCH`, `UPDATE_GIT_REMOTE` — see Fleet → Maintenance.
 
 ---
 
@@ -82,9 +82,9 @@ git pull
 sudo bash scripts/update.sh
 ```
 
-`update.sh` stops services, installs deps, runs migrations, rebuilds, restarts systemd units, and updates nginx config from `config/nginx.conf` when present. It does not change the Node major or the PostgreSQL major. A new install uses Node 22 and Postgres 18. An existing Node install and an existing database volume stay put until Fleet → Configuration starts the move. See [apps/docs/guide/runtime-upgrades.md](apps/docs/guide/runtime-upgrades.md).
+`update.sh` stops services, installs deps, runs migrations, rebuilds, restarts systemd units, and updates nginx config from `config/nginx.conf` when present. It does not change the Node major or the PostgreSQL major. A new install uses Node 22 and Postgres 18. An existing Node install and an existing database volume stay put until Fleet → Maintenance starts the move. See [apps/docs/guide/runtime-upgrades.md](apps/docs/guide/runtime-upgrades.md).
 
-**UI:** Admins can run **Download & update** (git pull + `update.sh`) from Configuration; requires API as root and may take many minutes—avoid short proxy timeouts. **Update packages** upgrades installed packages from a fixed list (`nginx`, `keepalived`, `crowdsec`, `ca-certificates`, `openssl`) via `scripts/update-packages.sh`. **Upgrade slaves** asks each enabled slave to run the product update. The slave must be in slave mode and must have the master's API key configured. The slave receives `POST /api/slave/maintenance`. `WARDEN_ALLOW_HOST_UPDATE=0` plans the script instead of running it. `GET /metrics` exposes Prometheus text.
+**UI:** Admins can run **Download & update** (git pull + `update.sh`) from Fleet → Maintenance; requires API as root and may take many minutes—avoid short proxy timeouts. **Update packages** upgrades installed packages from a fixed list (`nginx`, `keepalived`, `crowdsec`, `ca-certificates`, `openssl`) via `scripts/update-packages.sh`. **Upgrade slaves** asks each enabled slave to run the product update. The slave must be in slave mode and must have the master's API key configured. The slave receives `POST /api/slave/maintenance`. `WARDEN_ALLOW_HOST_UPDATE=0` plans the script instead of running it. `GET /metrics` exposes Prometheus text.
 
 **Platform:** `/platform` covers environments, `nw_` service accounts, jobs, runbooks, fleet alert rules, MFA and backup policies, config snapshots, and a push of that document to slaves (`POST /api/platform/sync`). Audit export is `GET /api/platform/audit/export?format=csv`.
 

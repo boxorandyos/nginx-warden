@@ -25,6 +25,7 @@ import { Route as AuthDefaultServerRouteImport } from './routes/_auth/default-se
 import { Route as AuthDomainsRouteImport } from './routes/_auth/domains'
 import { Route as AuthFirewallRouteImport } from './routes/_auth/firewall'
 import { Route as AuthLogsRouteImport } from './routes/_auth/logs'
+import { Route as AuthMaintenanceRouteImport } from './routes/_auth/maintenance'
 import { Route as AuthModsecurityRouteImport } from './routes/_auth/modsecurity'
 import { Route as AuthNetworkRouteImport } from './routes/_auth/network'
 import { Route as AuthNodesRouteImport } from './routes/_auth/nodes'
@@ -112,6 +113,11 @@ const AuthLogsRoute = AuthLogsRouteImport.update({
   path: '/logs',
   getParentRoute: () => AuthRoute,
 } as any)
+const AuthMaintenanceRoute = AuthMaintenanceRouteImport.update({
+  id: '/maintenance',
+  path: '/maintenance',
+  getParentRoute: () => AuthRoute,
+} as any)
 const AuthModsecurityRoute = AuthModsecurityRouteImport.update({
   id: '/modsecurity',
   path: '/modsecurity',
@@ -164,6 +170,7 @@ export interface FileRoutesByFullPath {
   '/domains': typeof AuthDomainsRoute
   '/firewall': typeof AuthFirewallRoute
   '/logs': typeof AuthLogsRoute
+  '/maintenance': typeof AuthMaintenanceRoute
   '/modsecurity': typeof AuthModsecurityRoute
   '/network': typeof AuthNetworkRoute
   '/nodes': typeof AuthNodesRoute
@@ -187,6 +194,7 @@ export interface FileRoutesByTo {
   '/domains': typeof AuthDomainsRoute
   '/firewall': typeof AuthFirewallRoute
   '/logs': typeof AuthLogsRoute
+  '/maintenance': typeof AuthMaintenanceRoute
   '/modsecurity': typeof AuthModsecurityRoute
   '/network': typeof AuthNetworkRoute
   '/nodes': typeof AuthNodesRoute
@@ -213,6 +221,7 @@ export interface FileRoutesById {
   '/_auth/domains': typeof AuthDomainsRoute
   '/_auth/firewall': typeof AuthFirewallRoute
   '/_auth/logs': typeof AuthLogsRoute
+  '/_auth/maintenance': typeof AuthMaintenanceRoute
   '/_auth/modsecurity': typeof AuthModsecurityRoute
   '/_auth/network': typeof AuthNetworkRoute
   '/_auth/nodes': typeof AuthNodesRoute
@@ -240,6 +249,7 @@ export interface FileRouteTypes {
     | '/domains'
     | '/firewall'
     | '/logs'
+    | '/maintenance'
     | '/modsecurity'
     | '/network'
     | '/nodes'
@@ -263,6 +273,7 @@ export interface FileRouteTypes {
     | '/domains'
     | '/firewall'
     | '/logs'
+    | '/maintenance'
     | '/modsecurity'
     | '/network'
     | '/nodes'
@@ -288,6 +299,7 @@ export interface FileRouteTypes {
     | '/_auth/domains'
     | '/_auth/firewall'
     | '/_auth/logs'
+    | '/_auth/maintenance'
     | '/_auth/modsecurity'
     | '/_auth/network'
     | '/_auth/nodes'
@@ -418,6 +430,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthLogsRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_auth/maintenance': {
+      id: '/_auth/maintenance'
+      path: '/maintenance'
+      fullPath: '/maintenance'
+      preLoaderRoute: typeof AuthMaintenanceRouteImport
+      parentRoute: typeof AuthRoute
+    }
     '/_auth/modsecurity': {
       id: '/_auth/modsecurity'
       path: '/modsecurity'
@@ -483,6 +502,7 @@ interface AuthRouteChildren {
   AuthDomainsRoute: typeof AuthDomainsRoute
   AuthFirewallRoute: typeof AuthFirewallRoute
   AuthLogsRoute: typeof AuthLogsRoute
+  AuthMaintenanceRoute: typeof AuthMaintenanceRoute
   AuthModsecurityRoute: typeof AuthModsecurityRoute
   AuthNetworkRoute: typeof AuthNetworkRoute
   AuthNodesRoute: typeof AuthNodesRoute
@@ -506,6 +526,7 @@ const AuthRouteChildren: AuthRouteChildren = {
   AuthDomainsRoute: AuthDomainsRoute,
   AuthFirewallRoute: AuthFirewallRoute,
   AuthLogsRoute: AuthLogsRoute,
+  AuthMaintenanceRoute: AuthMaintenanceRoute,
   AuthModsecurityRoute: AuthModsecurityRoute,
   AuthNetworkRoute: AuthNetworkRoute,
   AuthNodesRoute: AuthNodesRoute,

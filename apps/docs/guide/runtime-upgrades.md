@@ -1,6 +1,6 @@
 # Runtime upgrades
 
-`scripts/update.sh` updates the application. It does not move Node or PostgreSQL to a new major. A new install gets Node 22 and, when the data volume does not exist yet, Postgres 18. A server that already has Node, or already has `nginx-warden-postgres-data`, keeps that runtime until you start the move from Fleet → Configuration.
+`scripts/update.sh` updates the application. It does not move Node or PostgreSQL to a new major. A new install gets Node 22 and, when the data volume does not exist yet, Postgres 18. A server that already has Node, or already has `nginx-warden-postgres-data`, keeps that runtime until you start the move from Fleet → Maintenance.
 
 Node 24 is the current long-term support release. This API uses Prisma 5, which does not run on Node 24, so the console offers Node 22. Postgres 18 is the current stable major. Postgres 19 is a beta and is not a target.
 
@@ -8,7 +8,7 @@ Node 24 is the current long-term support release. This API uses Prisma 5, which 
 
 The API and the admin UI are rebuilt against whatever `node` is on `PATH`.
 
-From Fleet → Configuration, **Move Node to 22** runs:
+From Fleet → Maintenance, **Move Node to 22** runs:
 
 ```bash
 sudo UPGRADE_NODE_CONFIRM=1 bash scripts/upgrade-node.sh 22
@@ -39,7 +39,7 @@ Allowed targets are 16, 17, and 18, and the target must be newer than the runnin
 
 | Piece | Still installed as | How it moves |
 |---|---|---|
-| Node on a new server | 22.x | Fleet → Configuration, or `scripts/upgrade-node.sh` |
+| Node on a new server | 22.x | Fleet → Maintenance, or `scripts/upgrade-node.sh` |
 | pnpm | `packageManager` in `package.json` | A release that updates the lockfile |
-| PostgreSQL on a new volume | `postgres:18-alpine` | Fleet → Configuration copies an older volume forward |
+| PostgreSQL on a new volume | `postgres:18-alpine` | Fleet → Maintenance copies an older volume forward |
 | Image builds | `node:22-alpine` | `docker build --build-arg NODE_IMAGE=node:24-alpine` once Prisma supports it |

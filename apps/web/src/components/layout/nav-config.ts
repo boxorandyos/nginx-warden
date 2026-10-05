@@ -16,6 +16,7 @@ import {
   Settings,
   Flame,
   KeyRound,
+  Wrench,
 } from 'lucide-react';
 
 /** Distinct section-based IA (not sidebar-style “groups”) */
@@ -73,6 +74,7 @@ export const appNavSections: NavSection[] = [
       { path: '/users', navKey: 'nav.users', icon: Users },
       { path: '/nodes', navKey: 'nav.nodes', icon: Server },
       { path: '/configuration', navKey: 'nav.configuration', icon: Settings },
+      { path: '/maintenance', navKey: 'nav.maintenance', icon: Wrench },
       { path: '/platform', navKey: 'nav.platform', icon: Server },
     ],
   },
