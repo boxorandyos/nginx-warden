@@ -82,7 +82,7 @@ git pull
 sudo bash scripts/update.sh
 ```
 
-`update.sh` stops services, installs deps, runs migrations, rebuilds, restarts systemd units, and updates nginx config from `config/nginx.conf` when present.
+`update.sh` stops services, installs deps, runs migrations, rebuilds, restarts systemd units, and updates nginx config from `config/nginx.conf` when present. It does not change the Node major or the PostgreSQL major. Those moves are opt-in and leave the running copy in place: [apps/docs/guide/runtime-upgrades.md](apps/docs/guide/runtime-upgrades.md).
 
 **UI:** Admins can run **Download & update** (git pull + `update.sh`) from Configuration; requires API as root and may take many minutes—avoid short proxy timeouts. **Update packages** upgrades installed packages from a fixed list (`nginx`, `keepalived`, `crowdsec`, `ca-certificates`, `openssl`) via `scripts/update-packages.sh`. **Upgrade slaves** asks each enabled slave to run the product update. The slave must be in slave mode and must have the master's API key configured. The slave receives `POST /api/slave/maintenance`. `WARDEN_ALLOW_HOST_UPDATE=0` plans the script instead of running it. `GET /metrics` exposes Prometheus text.
 
@@ -166,6 +166,7 @@ sudo tail -f /var/log/nginx/error.log
 | OpenAPI | [apps/api/openapi.yaml](apps/api/openapi.yaml) |
 | Prisma schema | [apps/api/prisma/schema.prisma](apps/api/prisma/schema.prisma) |
 | Install guide (docs site) | [apps/docs/guide/installation.md](apps/docs/guide/installation.md) |
+| Node and PostgreSQL majors | [apps/docs/guide/runtime-upgrades.md](apps/docs/guide/runtime-upgrades.md) |
 | Scripts | [scripts/](scripts/) |
 
 ---

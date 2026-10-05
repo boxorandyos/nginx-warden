@@ -1,5 +1,7 @@
 # Frontend Dockerfile for Nginx Warden (React/Vite app)
-FROM node:20-alpine
+# NODE_IMAGE defaults to Node 20. Override to try a newer major without changing this file.
+ARG NODE_IMAGE=node:20-alpine
+FROM ${NODE_IMAGE}
 
 # Install pnpm globally
 RUN corepack enable && corepack prepare pnpm@8.15.0 --activate

@@ -137,6 +137,8 @@ node --version
 pnpm --version
 ```
 
+A new machine still gets Node 20 from the commands above. Moving an existing server to a newer Node or PostgreSQL major is a separate step, described in [Runtime upgrades](./runtime-upgrades). `scripts/update.sh` does not do that by itself.
+
 ### 3. Install Docker and Docker Compose
 
 ```bash

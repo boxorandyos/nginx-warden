@@ -174,16 +174,25 @@ else
     log "✓ npm $(npm -v) detected"
 fi
 
-# Check pnpm (required for monorepo)
+# Check pnpm (required for monorepo). The pin is packageManager in package.json.
+# A newer pnpm is installed only when that field changes in a release that also updates the lockfile.
+PNPM_PIN="8.15.0"
+if [ -f "${PROJECT_DIR}/package.json" ]; then
+    parsed=$(sed -n 's/.*"packageManager"[[:space:]]*:[[:space:]]*"pnpm@\([^"]*\)".*/\1/p' "${PROJECT_DIR}/package.json" | head -1)
+    if [ -n "${parsed}" ]; then
+        PNPM_PIN="${parsed}"
+    fi
+fi
+PNPM_PIN_MAJOR=$(printf '%s' "${PNPM_PIN}" | cut -d. -f1)
 if ! command -v pnpm &> /dev/null; then
-    warn "pnpm not found. Installing pnpm..."
-    npm install -g pnpm@8.15.0 >> "$LOG_FILE" 2>&1 || error "Failed to install pnpm"
+    warn "pnpm not found. Installing pnpm@${PNPM_PIN}..."
+    npm install -g "pnpm@${PNPM_PIN}" >> "$LOG_FILE" 2>&1 || error "Failed to install pnpm"
     log "✓ pnpm $(pnpm -v) installed successfully"
 else
     PNPM_VERSION=$(pnpm -v | cut -d'.' -f1)
-    if [ "${PNPM_VERSION}" -lt 8 ]; then
-        warn "pnpm version too old ($(pnpm -v)). Upgrading to 8.15.0..."
-        npm install -g pnpm@8.15.0 >> "$LOG_FILE" 2>&1 || error "Failed to upgrade pnpm"
+    if [ "${PNPM_VERSION}" -lt "${PNPM_PIN_MAJOR}" ]; then
+        warn "pnpm version too old ($(pnpm -v)). Upgrading to ${PNPM_PIN}..."
+        npm install -g "pnpm@${PNPM_PIN}" >> "$LOG_FILE" 2>&1 || error "Failed to upgrade pnpm"
         log "✓ pnpm upgraded to $(pnpm -v)"
     else
         log "✓ pnpm $(pnpm -v) detected"

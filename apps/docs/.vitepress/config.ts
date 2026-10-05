@@ -32,6 +32,7 @@ export default defineConfig({
         items: [
           { text: 'Getting Started', link: '/guide/introduction' },
           { text: 'Installation', link: '/guide/installation' },
+          { text: 'Runtime upgrades', link: '/guide/runtime-upgrades' },
           { text: 'Quick Start', link: '/guide/quick-start' }
         ]
       },
@@ -77,6 +78,7 @@ export default defineConfig({
           items: [
             { text: 'Introduction', link: '/guide/introduction' },
             { text: 'Installation', link: '/guide/installation' },
+            { text: 'Runtime upgrades', link: '/guide/runtime-upgrades' },
             { text: 'Quick Start', link: '/guide/quick-start' }
           ]
         },
