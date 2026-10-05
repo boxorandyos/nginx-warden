@@ -12,6 +12,7 @@
   "nav.users": "Benutzerverwaltung",
   "nav.nodes": "Slave-Knoten",
   "nav.configuration": "Konfiguration",
+  "nav.platform": "Plattform",
   "nav.network": "Layer 4",
   "page.layer4.description": "TCP- und UDP-Load-Balancer (NLBs) und Zustand der Upstreams.",
   "nav.plugins": "Plugins",

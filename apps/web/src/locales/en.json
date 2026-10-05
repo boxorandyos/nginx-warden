@@ -14,6 +14,7 @@
   "nav.users": "User Management",
   "nav.nodes": "Slave Nodes",
   "nav.configuration": "Configuration",
+  "nav.platform": "Platform",
   "nav.network": "Layer 4",
   "nav.defaultServer": "Default site",
   "page.layer4.description": "TCP and UDP load balancers (NLBs) and upstream health.",

@@ -65,6 +65,16 @@ if (config.nodeEnv === 'development') {
   app.use(morgan('combined'));
 }
 
+app.get('/metrics', async (_req, res) => {
+  try {
+    const { platformStore } = await import('./domains/platform/prisma-store');
+    const { prometheusText } = await import('./domains/platform/platform');
+    res.type('text/plain; version=0.0.4').send(prometheusText(await platformStore.metrics()));
+  } catch {
+    res.type('text/plain; version=0.0.4').send('# TYPE warden_up gauge\nwarden_up 1\n');
+  }
+});
+
 // Routes
 app.use('/api', routes);
 

@@ -29,6 +29,7 @@ import { Route as AuthModsecurityRouteImport } from './routes/_auth/modsecurity'
 import { Route as AuthNetworkRouteImport } from './routes/_auth/network'
 import { Route as AuthNodesRouteImport } from './routes/_auth/nodes'
 import { Route as AuthPerformanceRouteImport } from './routes/_auth/performance'
+import { Route as AuthPlatformRouteImport } from './routes/_auth/platform'
 import { Route as AuthSslRouteImport } from './routes/_auth/ssl'
 import { Route as AuthUsersRouteImport } from './routes/_auth/users'
 
@@ -131,6 +132,11 @@ const AuthPerformanceRoute = AuthPerformanceRouteImport.update({
   path: '/performance',
   getParentRoute: () => AuthRoute,
 } as any)
+const AuthPlatformRoute = AuthPlatformRouteImport.update({
+  id: '/platform',
+  path: '/platform',
+  getParentRoute: () => AuthRoute,
+} as any)
 const AuthSslRoute = AuthSslRouteImport.update({
   id: '/ssl',
   path: '/ssl',
@@ -162,6 +168,7 @@ export interface FileRoutesByFullPath {
   '/network': typeof AuthNetworkRoute
   '/nodes': typeof AuthNodesRoute
   '/performance': typeof AuthPerformanceRoute
+  '/platform': typeof AuthPlatformRoute
   '/ssl': typeof AuthSslRoute
   '/users': typeof AuthUsersRoute
 }
@@ -184,6 +191,7 @@ export interface FileRoutesByTo {
   '/network': typeof AuthNetworkRoute
   '/nodes': typeof AuthNodesRoute
   '/performance': typeof AuthPerformanceRoute
+  '/platform': typeof AuthPlatformRoute
   '/ssl': typeof AuthSslRoute
   '/users': typeof AuthUsersRoute
   '/': typeof AuthIndexRoute
@@ -209,6 +217,7 @@ export interface FileRoutesById {
   '/_auth/network': typeof AuthNetworkRoute
   '/_auth/nodes': typeof AuthNodesRoute
   '/_auth/performance': typeof AuthPerformanceRoute
+  '/_auth/platform': typeof AuthPlatformRoute
   '/_auth/ssl': typeof AuthSslRoute
   '/_auth/users': typeof AuthUsersRoute
   '/_auth/': typeof AuthIndexRoute
@@ -235,6 +244,7 @@ export interface FileRouteTypes {
     | '/network'
     | '/nodes'
     | '/performance'
+    | '/platform'
     | '/ssl'
     | '/users'
   fileRoutesByTo: FileRoutesByTo
@@ -257,6 +267,7 @@ export interface FileRouteTypes {
     | '/network'
     | '/nodes'
     | '/performance'
+    | '/platform'
     | '/ssl'
     | '/users'
     | '/'
@@ -281,6 +292,7 @@ export interface FileRouteTypes {
     | '/_auth/network'
     | '/_auth/nodes'
     | '/_auth/performance'
+    | '/_auth/platform'
     | '/_auth/ssl'
     | '/_auth/users'
     | '/_auth/'
@@ -434,6 +446,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthPerformanceRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_auth/platform': {
+      id: '/_auth/platform'
+      path: '/platform'
+      fullPath: '/platform'
+      preLoaderRoute: typeof AuthPlatformRouteImport
+      parentRoute: typeof AuthRoute
+    }
     '/_auth/ssl': {
       id: '/_auth/ssl'
       path: '/ssl'
@@ -468,6 +487,7 @@ interface AuthRouteChildren {
   AuthNetworkRoute: typeof AuthNetworkRoute
   AuthNodesRoute: typeof AuthNodesRoute
   AuthPerformanceRoute: typeof AuthPerformanceRoute
+  AuthPlatformRoute: typeof AuthPlatformRoute
   AuthSslRoute: typeof AuthSslRoute
   AuthUsersRoute: typeof AuthUsersRoute
   AuthIndexRoute: typeof AuthIndexRoute
@@ -490,6 +510,7 @@ const AuthRouteChildren: AuthRouteChildren = {
   AuthNetworkRoute: AuthNetworkRoute,
   AuthNodesRoute: AuthNodesRoute,
   AuthPerformanceRoute: AuthPerformanceRoute,
+  AuthPlatformRoute: AuthPlatformRoute,
   AuthSslRoute: AuthSslRoute,
   AuthUsersRoute: AuthUsersRoute,
   AuthIndexRoute: AuthIndexRoute,
